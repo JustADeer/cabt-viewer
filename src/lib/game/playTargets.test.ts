@@ -16,8 +16,10 @@ import { SlotType, targetFor, type CardView, type PlayerView, type PokemonSlotVi
 const energy: CardView = { name: 'Psychic Energy', fullName: 'Psychic Energy SVE', energyType: 5 };
 const pokemon: CardView = { name: 'Ralts', fullName: 'Ralts SIT', stage: 2 };
 const evolution: CardView = { name: 'Kirlia', fullName: 'Kirlia SIT', stage: 3, evolvesFrom: 'Ralts' };
-const trainer: CardView = { name: 'Nest Ball', fullName: 'Nest Ball SVI', trainerType: 0 };
-const tool: CardView = { name: 'Bravery Charm', fullName: 'Bravery Charm PAL', trainerType: 3 };
+const trainer: CardView = { name: 'Nest Ball', fullName: 'Nest Ball SVI', trainerType: 1 };
+const tool: CardView = { name: 'Bravery Charm', fullName: 'Bravery Charm PAL', trainerType: 2 };
+const supporter: CardView = { name: "Lillie's Determination", fullName: "Lillie's Determination MEG", trainerType: 3 };
+const stadium: CardView = { name: 'Forest of Vitality', fullName: 'Forest of Vitality MEG', trainerType: 4 };
 
 describe('play target rules', () => {
   it('classifies ordinary card types for board targeting', () => {
@@ -53,6 +55,10 @@ describe('play target rules', () => {
   it('uses the board area for generic trainers and slots for tools', () => {
     expect(canPlayCardToPlayArea(trainer, 0)).toBe(true);
     expect(canPlayCardToSlot(trainer, 0, slot(0, 'active', 0, false))).toBe(false);
+    expect(canPlayCardToPlayArea(supporter, 0)).toBe(true);
+    expect(canPlayCardToSlot(supporter, 0, slot(0, 'active', 0, false))).toBe(false);
+    expect(canPlayCardToPlayArea(stadium, 0)).toBe(true);
+    expect(canPlayCardToSlot(stadium, 0, slot(0, 'active', 0, false))).toBe(false);
     expect(canPlayCardToPlayArea(tool, 0)).toBe(false);
     expect(canPlayCardToSlot(tool, 0, slot(0, 'active', 0, false))).toBe(true);
     expect(canPlayCardToSlot(tool, 0, slot(0, 'bench', 0, true))).toBe(false);

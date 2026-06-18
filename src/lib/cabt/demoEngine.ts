@@ -533,7 +533,7 @@ function cardToView(cardRef: CabtCard, dataMaps: CabtDataMaps): CardView {
     setNumber: data.setNumber,
     superType: data.cardType === 0 ? 'Pokemon' : data.cardType === 5 ? 'Energy' : 'Trainer',
     cardType: data.energyType,
-    trainerType: data.cardType === 1 || data.cardType === 3 || data.cardType === 4 ? data.cardType : undefined,
+    trainerType: data.cardType >= 1 && data.cardType <= 4 ? data.cardType : undefined,
     energyType: data.cardType === 5 ? data.energyType : undefined,
     stage: data.basic ? 2 : data.stage1 ? 3 : data.stage2 ? 4 : undefined,
     evolvesFrom: data.evolvesFrom ?? undefined,

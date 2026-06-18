@@ -1,7 +1,7 @@
 import type { CardView, PlayerView, PokemonSlotView } from './types';
 
 const BASIC_STAGE = 2;
-const TOOL_TRAINER_TYPE = 3;
+const TOOL_TRAINER_TYPE = 2;
 
 export type BoardPlayAreaContext = {
   selected: CardView | undefined;
@@ -41,7 +41,10 @@ export function isBasicPokemonCard(card: CardView | undefined): card is CardView
 }
 
 function isToolTrainerCard(card: CardView | undefined): boolean {
-  return card?.trainerType === TOOL_TRAINER_TYPE;
+  if (card?.trainerType === TOOL_TRAINER_TYPE) {
+    return true;
+  }
+  return typeof card?.trainerType === 'string' && /\btool\b/i.test(card.trainerType);
 }
 
 export function canEvolveSlot(card: CardView | undefined, slot: PokemonSlotView): boolean {
