@@ -31,6 +31,7 @@ type BridgeResponse = {
   error?: string;
   traceback?: string;
   observation?: CabtObservation;
+  autoSteps?: CabtObservation[];
   cards?: CabtCardData[];
   attacks?: CabtAttack[];
 };
@@ -43,6 +44,15 @@ type PendingBridgeCall = {
 type PendingRetreatTarget = {
   playerIndex: number;
   benchIndex: number;
+};
+
+type PlayerControl = 'self' | 'agent';
+
+type SaveReplayResponse = {
+  ok: boolean;
+  file?: string;
+  id?: string;
+  error?: string;
 };
 
 type AgentManifest = {
@@ -70,6 +80,8 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const FRONTEND_ROOT = path.resolve(__dirname, '..', '..');
 const WORKSPACE_ROOT = path.resolve(FRONTEND_ROOT, '..');
 const BRIDGE_PATH = path.join(FRONTEND_ROOT, 'src', 'engine', 'cabt_bridge.py');
+const GAME_LOGS_DIR = path.join(FRONTEND_ROOT, 'public', 'game-logs');
+const GAME_LOGS_MANIFEST = path.join(GAME_LOGS_DIR, 'logs.json');
 
 export class LocalEngineController {
   private readonly demo = new CabtDemoController();
@@ -80,6 +92,10 @@ export class LocalEngineController {
   private logId = 1;
   private sessionId = '';
   private pendingRetreatTarget: PendingRetreatTarget | null = null;
+  private knownHands = new Map<number, CabtCard[]>();
+  private replayFrames: CabtObservation[] = [];
+  private replayPlayerLabels: [string, string] = ['Player 1', 'Player 2'];
+  private replayModeLabel = 'Self vs Agent';
 
   constructor() {
     this.bridge = new CabtBridgeClient(() => this.invalidateSession('CABT bridge exited.'));
@@ -142,26 +158,76 @@ export class LocalEngineController {
     return { ok: false, error: 'Replay loading is not wired for the CABT adapter yet.' };
   }
 
+  saveReplay(): SaveReplayResponse {
+    if (!this.replayFrames.length) {
+      return { ok: false, error: 'No local match is available to save.' };
+    }
+    const finalFrame = this.replayFrames.at(-1);
+    const winner = finalFrame?.current?.result;
+    const created = new Date();
+    const stamp = compactIsoTimestamp(created);
+    const id = `local-${stamp}`;
+    const file = `${id}.json`;
+    const name = `Local ${this.replayModeLabel} ${created.toLocaleString()}`;
+    const replay = {
+      visualize: this.replayFrames,
+      environment: {
+        id,
+        title: name,
+        info: {
+          TeamNames: this.replayPlayerLabels,
+        },
+      },
+    };
+
+    fs.mkdirSync(GAME_LOGS_DIR, { recursive: true });
+    fs.writeFileSync(path.join(GAME_LOGS_DIR, file), `${JSON.stringify(replay)}\n`);
+    writeGameLogManifest({
+      id,
+      name,
+      file,
+      createdAt: created.toISOString(),
+      players: this.replayPlayerLabels,
+      description: `Saved local ${this.replayModeLabel} match${typeof winner === 'number' && winner >= 0 ? `, result ${winner}` : ''}.`,
+    });
+    return { ok: true, id, file };
+  }
+
   close(): void {
     this.bridge.close();
     this.invalidateSession('CABT bridge closed.');
   }
 
   private async start(payload: any): Promise<EngineResponse> {
+    const playerControls = normalizePlayerControls(payload);
     const player1Deck = resolveDeck(payload?.player1?.deck ?? [], 'Your deck');
-    const player2Deck = resolveDeck(payload?.player2?.deck ?? [], 'AI opponent deck');
-    const agentPath = agentPathForId(payload?.player2?.agentId);
+    const player2Deck = resolveDeck(payload?.player2?.deck ?? [], 'Player 2 deck');
+    const agentPaths = [
+      playerControls[0] === 'agent' ? agentPathForId(payload?.player1?.agentId) : undefined,
+      playerControls[1] === 'agent' ? agentPathForId(payload?.player2?.agentId) : undefined,
+    ];
     this.bridge.stop();
     this.sessionId = createSessionId();
     this.pendingRetreatTarget = null;
+    this.knownHands.clear();
+    this.replayFrames = [];
+    this.replayModeLabel = `${controlLabel(playerControls[0])} vs ${controlLabel(playerControls[1])}`;
+    this.replayPlayerLabels = [
+      payload?.player1?.name ?? 'Player 1',
+      payload?.player2?.name ?? 'Player 2',
+    ];
     const response = await this.bridge.request({
       command: 'start',
       deck0: player1Deck,
       deck1: player2Deck,
-      agentPath,
+      agentPaths,
+      agentControlled: playerControls.map((control) => control === 'agent'),
     }, { allowStart: true });
     this.applyBridgeResponse(response);
-    this.logs = [{ id: this.logId++, message: `Started real CABT match${agentPath ? ` against ${agentPath}` : ''}.` }];
+    this.logs = [{
+      id: this.logId++,
+      message: `Started real CABT match (${this.replayModeLabel}).`,
+    }];
     return this.viewResponse();
   }
 
@@ -324,7 +390,8 @@ export class LocalEngineController {
     if (!response.ok) {
       throw new Error(response.traceback ? `${response.error}\n${response.traceback}` : (response.error ?? 'CABT bridge failed.'));
     }
-    this.observation = response.observation ?? null;
+    this.recordReplayFrames(response);
+    this.observation = this.withKnownHands(response.observation ?? null);
     if (response.cards && response.attacks) {
       this.dataMaps = {
         cardData: Object.fromEntries(response.cards.map((card) => [card.cardId, enrichCardData(card)])),
@@ -339,6 +406,43 @@ export class LocalEngineController {
 
   private view() {
     return cabtObservationToGameView(this.observation, this.logs, this.dataMaps);
+  }
+
+  private recordReplayFrames(response: BridgeResponse): void {
+    const observations = response.autoSteps?.length ? response.autoSteps : response.observation ? [response.observation] : [];
+    for (const observation of observations) {
+      const hydratedObservation = this.withKnownHands(observation);
+      if (hydratedObservation) {
+        this.replayFrames.push(hydratedObservation);
+      }
+    }
+  }
+
+  private withKnownHands(observation: CabtObservation | null): CabtObservation | null {
+    if (!observation?.current) {
+      return observation;
+    }
+    const players = observation.current.players.map((player, playerIndex) => {
+      if (player.hand) {
+        this.knownHands.set(playerIndex, player.hand);
+        return player;
+      }
+      const knownHand = this.knownHands.get(playerIndex);
+      if (!knownHand || knownHand.length !== player.handCount) {
+        return player;
+      }
+      return {
+        ...player,
+        hand: knownHand,
+      };
+    });
+    return {
+      ...observation,
+      current: {
+        ...observation.current,
+        players,
+      },
+    };
   }
 
   private matchesPlayCardOption(option: CabtOption, payload: any): boolean {
@@ -453,6 +557,8 @@ export class LocalEngineController {
     this.sessionId = '';
     this.observation = null;
     this.pendingRetreatTarget = null;
+    this.knownHands.clear();
+    this.replayFrames = [];
     this.logs = [...this.logs, { id: this.logId++, message }];
   }
 }
@@ -596,6 +702,48 @@ function toPosixPath(value: string): string {
 
 function createSessionId(): string {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function normalizePlayerControls(payload: any): [PlayerControl, PlayerControl] {
+  const player1Control = payload?.player1?.control === 'agent' ? 'agent' : 'self';
+  if (payload?.player2?.control === 'self' || payload?.manualOpponent || payload?.player2?.manualOpponent) {
+    return [player1Control, 'self'];
+  }
+  return [player1Control, 'agent'];
+}
+
+function controlLabel(control: PlayerControl): string {
+  return control === 'agent' ? 'Agent' : 'Self';
+}
+
+function compactIsoTimestamp(date: Date): string {
+  return date.toISOString().replace(/\D/g, '').slice(0, 14);
+}
+
+function writeGameLogManifest(entry: {
+  id: string;
+  name: string;
+  file: string;
+  createdAt: string;
+  players: string[];
+  description: string;
+}): void {
+  const manifest = readGameLogManifest();
+  const logs = Array.isArray(manifest.logs) ? manifest.logs.filter((item: any) => item?.id !== entry.id) : [];
+  manifest.logs = [entry, ...logs];
+  fs.writeFileSync(GAME_LOGS_MANIFEST, `${JSON.stringify(manifest, null, 2)}\n`);
+}
+
+function readGameLogManifest(): { logs: unknown[] } {
+  if (!fs.existsSync(GAME_LOGS_MANIFEST)) {
+    return { logs: [] };
+  }
+  try {
+    const manifest = JSON.parse(fs.readFileSync(GAME_LOGS_MANIFEST, 'utf8'));
+    return manifest && typeof manifest === 'object' && Array.isArray(manifest.logs) ? manifest : { logs: [] };
+  } catch {
+    return { logs: [] };
+  }
 }
 
 function resolveDeck(cards: unknown[], label: string): number[] {

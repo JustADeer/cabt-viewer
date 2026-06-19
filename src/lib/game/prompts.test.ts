@@ -116,6 +116,14 @@ describe('prompt helpers', () => {
     expect(isForcedAutoResolvePrompt(ordinaryConfirm)).toBe(false);
     expect(shouldAutoResolvePrompt(ordinaryConfirm, true, ordinaryResult)).toBe(false);
   });
+
+  it('lets manual flows disable forced prompt auto-resolution', () => {
+    const goFirst = { ...prompt('ConfirmPrompt'), message: 'GO_FIRST' };
+    const result = autoResolvablePromptResult(goFirst, null);
+
+    expect(shouldAutoResolvePrompt(goFirst, false, result, false)).toBe(false);
+    expect(shouldAutoResolvePrompt(goFirst, true, result, false)).toBe(false);
+  });
 });
 
 function prompt(className: string, fields: Record<string, unknown> = {}, id = 1): PromptView {

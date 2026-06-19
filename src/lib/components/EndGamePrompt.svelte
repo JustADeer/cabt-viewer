@@ -3,9 +3,23 @@
     resultLabel: string;
     turn: number;
     onconfirm: () => void;
+    onsave?: () => void;
+    saveDisabled?: boolean;
+    saveMessage?: string;
+    saveError?: string;
+    saving?: boolean;
   };
 
-  let { resultLabel, turn, onconfirm }: Props = $props();
+  let {
+    resultLabel,
+    turn,
+    onconfirm,
+    onsave,
+    saveDisabled = false,
+    saveMessage = '',
+    saveError = '',
+    saving = false,
+  }: Props = $props();
 </script>
 
 <div class="end-game-overlay" role="dialog" aria-modal="true" aria-labelledby="end-game-title">
@@ -15,7 +29,19 @@
       <h2 id="end-game-title">{resultLabel}</h2>
       <p>Finished on turn {turn}</p>
     </div>
-    <button type="button" onclick={onconfirm}>Back to main screen</button>
+    <div class="actions">
+      {#if onsave}
+        <button class="secondary" type="button" onclick={onsave} disabled={saveDisabled || saving}>
+          {saving ? 'Saving...' : saveMessage ? 'Saved' : 'Save match'}
+        </button>
+      {/if}
+      <button type="button" onclick={onconfirm}>Back to main screen</button>
+    </div>
+    {#if saveMessage}
+      <p class="save-status" role="status">{saveMessage}</p>
+    {:else if saveError}
+      <p class="save-status error" role="alert">{saveError}</p>
+    {/if}
   </section>
 </div>
 
@@ -65,6 +91,12 @@
     font-size: 14px;
   }
 
+  .actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
   .end-game-panel button {
     justify-self: start;
     border-radius: 5px;
@@ -75,9 +107,35 @@
     font-weight: 900;
   }
 
+  .end-game-panel button.secondary {
+    border-color: var(--surface-glass-border);
+    background: var(--surface-panel-bg);
+  }
+
+  .end-game-panel button:disabled {
+    cursor: wait;
+    opacity: 0.6;
+  }
+
   .end-game-panel button:hover,
   .end-game-panel button:focus-visible {
     border-color: var(--accent-strong);
     background: var(--accent-tint);
+  }
+
+  .end-game-panel button:disabled:hover,
+  .end-game-panel button:disabled:focus-visible {
+    border-color: var(--surface-glass-border);
+    background: var(--surface-panel-bg);
+  }
+
+  .save-status {
+    margin: -6px 0 0;
+    color: var(--text-muted);
+    font-size: 13px;
+  }
+
+  .save-status.error {
+    color: var(--danger-text);
   }
 </style>

@@ -50,6 +50,48 @@ describe('LocalEngineController', () => {
     }
   });
 
+  it('starts self-vs-self without sending agent paths to the bridge', async () => {
+    const engine = new LocalEngineController() as any;
+    let bridgePayload: Record<string, unknown> | undefined;
+    engine.bridge = {
+      stop: () => {},
+      request: async (payload: Record<string, unknown>) => {
+        bridgePayload = payload;
+        return { ok: true, observation: null, cards: [], attacks: [] };
+      },
+    };
+
+    const res = await engine.start({
+      player1: { deck: Array(60).fill(1), control: 'self' },
+      player2: { deck: Array(60).fill(2), control: 'self', agentId: 'mega-lucario-ex' },
+    });
+
+    expect(res.ok).toBe(true);
+    expect(bridgePayload?.agentControlled).toEqual([false, false]);
+    expect(bridgePayload?.agentPaths).toEqual([undefined, undefined]);
+  });
+
+  it('wires agent-controlled players to their selected agent paths', async () => {
+    const engine = new LocalEngineController() as any;
+    let bridgePayload: Record<string, unknown> | undefined;
+    engine.bridge = {
+      stop: () => {},
+      request: async (payload: Record<string, unknown>) => {
+        bridgePayload = payload;
+        return { ok: true, observation: null, cards: [], attacks: [] };
+      },
+    };
+
+    const res = await engine.start({
+      player1: { deck: Array(60).fill(1), control: 'agent', agentId: 'first-legal' },
+      player2: { deck: Array(60).fill(2), control: 'agent', agentId: 'mega-lucario-ex' },
+    });
+
+    expect(res.ok).toBe(true);
+    expect(bridgePayload?.agentControlled).toEqual([true, true]);
+    expect(bridgePayload?.agentPaths).toEqual([undefined, 'public/agents/mega-lucario-ex/main.py']);
+  });
+
   it('matches real CABT main-phase hand options with omitted source fields', () => {
     const engine = new LocalEngineController() as any;
     const payload = {
