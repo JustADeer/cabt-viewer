@@ -121,6 +121,7 @@
           <img
             src={energyIconSrc(energy)}
             alt={energy.name || 'Energy'}
+            data-energy-serial={energy.serial ?? undefined}
             class:pending-energy={hasPendingAttach(energy)}
             style={energyStackStyle(energyIndex)}
           />
@@ -337,6 +338,10 @@
     opacity: 0.5;
   }
 
+  .energy-badges img:global(.reveal-attach-handoff-energy) {
+    animation: reveal-attached-energy 360ms cubic-bezier(0.2, 0.82, 0.22, 1) both;
+  }
+
   .energy-badges.stacked-energy {
     display: block;
   }
@@ -409,5 +414,17 @@
     font-size: clamp(8px, calc(var(--slot-card-w) * 0.07), 11px);
     font-weight: 900;
     line-height: 1;
+  }
+
+  @keyframes reveal-attached-energy {
+    0%,
+    58% {
+      opacity: 0;
+      transform: scale(0.72);
+    }
+    100% {
+      opacity: 1;
+      transform: scale(1);
+    }
   }
 </style>

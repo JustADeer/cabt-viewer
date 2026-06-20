@@ -24,8 +24,8 @@
     top: number;
     width: number;
     height: number;
-    deckMoveX: number;
-    deckMoveY: number;
+    revealX: number;
+    revealY: number;
     deckScale: number;
     exitX: number;
     exitY: number;
@@ -51,6 +51,7 @@
   let initialized = false;
   let lastScopeKey: string | number = '';
   let nextAnimationId = 1;
+  const activeAttachElements = new Set<HTMLElement>();
 
   onDestroy(() => {
     clearReveals();
@@ -167,6 +168,7 @@
       const sourceCenter = spriteCenter(sprite);
       const targetCenter = centerOf(targetRect);
       const delayMs = actionAnimationStartMs(animationEvents, event);
+      markAttachTarget(target, serial, delayMs);
       updateSprites((item) => item.serial === serial
         ? {
             ...item,
@@ -234,6 +236,44 @@
     }
     timers.length = 0;
     reveals = [];
+    clearAttachTargets();
+  }
+
+  function markAttachTarget(target: HTMLElement, serial: number, delayMs: number) {
+    const startTimer = setTimeout(() => {
+      const energyBadge = attachedEnergyElement(target, serial);
+      energyBadge?.classList.add('reveal-attach-handoff-energy');
+      if (energyBadge) {
+        activeAttachElements.add(energyBadge);
+      }
+    }, delayMs);
+    const endTimer = setTimeout(() => {
+      const energyBadge = attachedEnergyElement(target, serial);
+      energyBadge?.classList.remove('reveal-attach-handoff-energy');
+      if (energyBadge) {
+        activeAttachElements.delete(energyBadge);
+      }
+    }, delayMs + actionAnimationTiming.handMoveMs + 120);
+    timers.push(startTimer, endTimer);
+  }
+
+  function clearAttachTargets() {
+    for (const element of activeAttachElements) {
+      element.classList.remove('reveal-attach-handoff-energy');
+    }
+    activeAttachElements.clear();
+  }
+
+  function attachedEnergyElement(target: HTMLElement, serial: number): HTMLElement | null {
+    if (Number.isFinite(serial)) {
+      const bySerial = target.querySelector(`[data-energy-serial="${serial}"]`);
+      if (bySerial instanceof HTMLElement) {
+        return bySerial;
+      }
+    }
+    const badges = target.querySelectorAll('.energy-badges img');
+    const fallback = badges.item(badges.length - 1);
+    return fallback instanceof HTMLElement ? fallback : null;
   }
 
   function spritesForPlayer(
@@ -252,8 +292,7 @@
       const params = event.params as Record<string, unknown> | undefined;
       const cardId = Number(params?.cardId);
       const serial = Number(params?.serial);
-      const targetCenter = layout.targetCenter(index);
-      const rotation = (index - (playerEvents.length - 1) / 2) * 1.2;
+      const target = layout.target(index);
       return {
         id: `${event.id}-${Number.isFinite(serial) ? serial : index}`,
         card: {
@@ -265,17 +304,17 @@
         order: index + 1,
         mode: 'revealing',
         delayMs: actionAnimationStartMs(animationEvents, event),
-        left: targetCenter.x - layout.cardWidth / 2,
-        top: targetCenter.y - layout.cardHeight / 2,
+        left: deckCenter.x - layout.cardWidth / 2,
+        top: deckCenter.y - layout.cardHeight / 2,
         width: layout.cardWidth,
         height: layout.cardHeight,
-        deckMoveX: deckCenter.x - targetCenter.x,
-        deckMoveY: deckCenter.y - targetCenter.y,
+        revealX: target.x - deckCenter.x,
+        revealY: target.y - deckCenter.y,
         deckScale: Math.max(0.32, Math.min(0.9, deckRect.width / layout.cardWidth)),
         exitX: 0,
         exitY: 0,
         exitScale: 1,
-        rotation,
+        rotation: target.rotation,
       };
     });
   }
@@ -289,26 +328,35 @@
     const centerX = boardRect ? boardRect.left + boardRect.width / 2 : viewportWidth / 2;
     const centerY = boardRect ? boardRect.top + boardRect.height * 0.5 : viewportHeight * 0.47;
     const maxWidth = boardRect ? boardRect.width - 96 : viewportWidth - 96;
-    const columns = viewportWidth < 760 ? Math.min(3, count) : Math.max(1, count);
-    const gap = viewportWidth < 760 ? 8 : 12;
-    const availableWidth = Math.max(280, maxWidth);
-    const cardWidth = Math.min(142, Math.max(86, (availableWidth - gap * (columns - 1)) / columns));
+    const availableWidth = Math.max(220, maxWidth);
+    const spacingRatio = viewportWidth < 760 ? 0.62 : 0.7;
+    const desiredCardWidth = viewportWidth < 760 ? 104 : 142;
+    const minCardWidth = 86;
+    const maxColumns = Math.max(1, Math.floor(((availableWidth / minCardWidth) - 1) / spacingRatio + 1));
+    const columns = Math.min(count, maxColumns);
+    const cardWidth = Math.min(desiredCardWidth, availableWidth / (1 + spacingRatio * Math.max(0, columns - 1)));
     const cardHeight = cardWidth * cardHeightToWidthRatio;
+    const spacing = cardWidth * spacingRatio;
+    const rotationStep = count <= 1 ? 0 : Math.min(5, 20 / Math.max(1, count - 1));
+    const arcDrop = cardWidth * 0.045;
     const rows = Math.ceil(count / columns);
-    const gridWidth = columns * cardWidth + (columns - 1) * gap;
-    const gridHeight = rows * cardHeight + (rows - 1) * gap;
-    const originX = centerX - gridWidth / 2;
-    const originY = centerY - gridHeight / 2;
+    const rowGap = cardHeight * 0.08;
+    const totalHeight = rows * cardHeight + Math.max(0, rows - 1) * rowGap;
+    const originY = centerY - totalHeight / 2 + cardHeight / 2;
 
     return {
       cardWidth,
       cardHeight,
-      targetCenter(index: number) {
+      target(index: number) {
         const row = Math.floor(index / columns);
-        const column = index % columns;
+        const rowStart = row * columns;
+        const cardsInRow = Math.min(columns, count - rowStart);
+        const column = index - rowStart;
+        const offset = column - (cardsInRow - 1) / 2;
         return {
-          x: originX + column * (cardWidth + gap) + cardWidth / 2,
-          y: originY + row * (cardHeight + gap) + cardHeight / 2,
+          x: centerX + offset * spacing,
+          y: originY + row * (cardHeight + rowGap) + Math.abs(offset) * arcDrop,
+          rotation: offset * rotationStep,
         };
       },
     };
@@ -369,8 +417,8 @@
 
   function spriteCenter(sprite: RevealSprite): { x: number; y: number } {
     return {
-      x: sprite.left + sprite.width / 2,
-      y: sprite.top + sprite.height / 2,
+      x: sprite.left + sprite.width / 2 + sprite.revealX,
+      y: sprite.top + sprite.height / 2 + sprite.revealY,
     };
   }
 
@@ -387,8 +435,8 @@
       `top: ${sprite.top}px`,
       `width: ${sprite.width}px`,
       `height: ${sprite.height}px`,
-      `--deck-x: ${sprite.deckMoveX.toFixed(1)}px`,
-      `--deck-y: ${sprite.deckMoveY.toFixed(1)}px`,
+      `--reveal-x: ${sprite.revealX.toFixed(1)}px`,
+      `--reveal-y: ${sprite.revealY.toFixed(1)}px`,
       `--deck-scale: ${sprite.deckScale.toFixed(3)}`,
       `--exit-x: ${sprite.exitX.toFixed(1)}px`,
       `--exit-y: ${sprite.exitY.toFixed(1)}px`,
@@ -399,10 +447,6 @@
     ].join('; ');
   }
 </script>
-
-{#if reveals.length}
-  <span class="deck-reveal-scrim" aria-hidden="true"></span>
-{/if}
 
 <span class="deck-reveal-animation" aria-hidden="true">
   {#each reveals as reveal (reveal.id)}
@@ -424,15 +468,6 @@
 </span>
 
 <style>
-  .deck-reveal-scrim {
-    position: fixed;
-    inset: 0;
-    z-index: 39;
-    pointer-events: none;
-    background: rgba(246, 248, 251, 0.32);
-    backdrop-filter: blur(1.5px);
-  }
-
   .deck-reveal-animation {
     position: fixed;
     inset: 0;
@@ -454,6 +489,10 @@
 
   .reveal-card.revealing {
     animation: deck-reveal-travel 1180ms cubic-bezier(0.18, 0.86, 0.24, 1) var(--reveal-delay) both;
+  }
+
+  .reveal-card.held {
+    transform: translate3d(var(--reveal-x), var(--reveal-y), 0) scale(1) rotate(var(--reveal-rotation));
   }
 
   .reveal-card.attaching {
@@ -527,51 +566,63 @@
     0% {
       opacity: 0;
       transform:
-        translate3d(var(--deck-x), var(--deck-y), 0)
+        translate3d(0, 0, 0)
         scale(var(--deck-scale))
         rotate(0deg);
     }
     2% {
       opacity: 1;
       transform:
-        translate3d(var(--deck-x), var(--deck-y), 0)
+        translate3d(0, 0, 0)
         scale(var(--deck-scale))
         rotate(0deg);
     }
     72%,
     100% {
       opacity: 1;
-      transform: translate3d(0, 0, 0) scale(1) rotate(var(--reveal-rotation));
+      transform: translate3d(var(--reveal-x), var(--reveal-y), 0) scale(1) rotate(var(--reveal-rotation));
     }
   }
 
   @keyframes deck-reveal-attach {
     0% {
       opacity: 1;
-      transform: translate3d(0, 0, 0) scale(1) rotate(var(--reveal-rotation));
+      transform: translate3d(var(--reveal-x), var(--reveal-y), 0) scale(1) rotate(var(--reveal-rotation));
     }
-    88% {
+    68% {
       opacity: 1;
-      transform: translate3d(var(--exit-x), var(--exit-y), 0) scale(var(--exit-scale)) rotate(0deg);
+      transform:
+        translate3d(calc(var(--reveal-x) + var(--exit-x)), calc(var(--reveal-y) + var(--exit-y)), 0)
+        scale(var(--exit-scale))
+        rotate(0deg);
     }
     100% {
       opacity: 0;
-      transform: translate3d(var(--exit-x), var(--exit-y), 0) scale(var(--exit-scale)) rotate(0deg);
+      transform:
+        translate3d(calc(var(--reveal-x) + var(--exit-x)), calc(var(--reveal-y) + var(--exit-y)), 0)
+        scale(var(--exit-scale))
+        rotate(0deg);
     }
   }
 
   @keyframes deck-reveal-return {
     0% {
       opacity: 1;
-      transform: translate3d(0, 0, 0) scale(1) rotate(var(--reveal-rotation));
+      transform: translate3d(var(--reveal-x), var(--reveal-y), 0) scale(1) rotate(var(--reveal-rotation));
     }
     88% {
       opacity: 1;
-      transform: translate3d(var(--exit-x), var(--exit-y), 0) scale(var(--exit-scale)) rotate(0deg);
+      transform:
+        translate3d(calc(var(--reveal-x) + var(--exit-x)), calc(var(--reveal-y) + var(--exit-y)), 0)
+        scale(var(--exit-scale))
+        rotate(0deg);
     }
     100% {
       opacity: 0;
-      transform: translate3d(var(--exit-x), var(--exit-y), 0) scale(var(--exit-scale)) rotate(0deg);
+      transform:
+        translate3d(calc(var(--reveal-x) + var(--exit-x)), calc(var(--reveal-y) + var(--exit-y)), 0)
+        scale(var(--exit-scale))
+        rotate(0deg);
     }
   }
 
