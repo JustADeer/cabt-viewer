@@ -22,6 +22,8 @@ export type CardTarget = {
 
 export type CardView = {
   id?: number;
+  serial?: number;
+  playerIndex?: number;
   name: string;
   fullName: string;
   set?: string;

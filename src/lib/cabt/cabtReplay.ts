@@ -158,6 +158,8 @@ export function cabtReplayToSnapshot(input: unknown): ReplaySnapshot {
     }
   });
 
+  applyPendingPlayedDiscards(steps, views);
+
   steps.forEach((step, index) => {
     step.index = index;
     step.actionIndex = index === 0 ? null : index - 1;
@@ -422,7 +424,12 @@ function groupedStepDisplayView(
   groups: ReplayActionGroup[],
   groupIndex: number,
 ): GameView | undefined {
-  if (!previousView || groups.length < 2) {
+  const group = groups[groupIndex];
+  if (!previousView || !group) {
+    return undefined;
+  }
+  const needsProjection = groups.length >= 2 || shouldProjectSingleGroup(currentView, group);
+  if (!needsProjection) {
     return undefined;
   }
 
@@ -456,6 +463,95 @@ function groupedStepDisplayView(
   return view;
 }
 
+type PendingPlayedDiscard = {
+  playerIndex: number;
+  card: CardView;
+};
+
+function applyPendingPlayedDiscards(steps: ReplayStep[], views: GameView[]): void {
+  let pending: PendingPlayedDiscard[] = [];
+
+  for (const step of steps) {
+    const baseView = views[step.stateIndex];
+    if (!baseView) {
+      continue;
+    }
+
+    pending = pending.filter((entry) => !playerHasDiscardCard(baseView.players[entry.playerIndex], entry.card));
+    for (const event of step.actionTimeline ?? []) {
+      const pendingCard = pendingPlayedDiscardForEvent(baseView, event);
+      if (pendingCard && !pending.some((entry) => entry.playerIndex === pendingCard.playerIndex && sameKnownCard(entry.card, pendingCard.card))) {
+        pending = [...pending, pendingCard];
+      }
+    }
+
+    if (!pending.length) {
+      continue;
+    }
+
+    const view = step.displayView ?? baseView;
+    const missingPendingCards = pending.filter((entry) => !playerHasDiscardCard(view.players[entry.playerIndex], entry.card));
+    if (missingPendingCards.length) {
+      step.displayView = gameViewWithPendingDiscards(view, missingPendingCards);
+    }
+  }
+}
+
+function pendingPlayedDiscardForEvent(view: GameView, event: ActionTimelineEvent): PendingPlayedDiscard | undefined {
+  if (event.kind !== 'Play' || event.playerIndex === undefined) {
+    return undefined;
+  }
+  const player = view.players[event.playerIndex];
+  const card = cardViewFromEvent(event);
+  if (!player || !card || playerHasDiscardCard(player, card) || playerHasCardInPlay(player, event)) {
+    return undefined;
+  }
+  return { playerIndex: event.playerIndex, card };
+}
+
+function gameViewWithPendingDiscards(view: GameView, pending: PendingPlayedDiscard[]): GameView {
+  const cardsByPlayer = new Map<number, CardView[]>();
+  for (const entry of pending) {
+    const cards = cardsByPlayer.get(entry.playerIndex) ?? [];
+    cardsByPlayer.set(entry.playerIndex, [...cards, entry.card]);
+  }
+
+  return {
+    ...view,
+    players: view.players.map((player, playerIndex) => {
+      const pendingCards = cardsByPlayer.get(playerIndex) ?? [];
+      if (!pendingCards.length) {
+        return player;
+      }
+      return {
+        ...player,
+        discard: [
+          ...player.discard,
+          ...pendingCards.filter((card) => !player.discard.some((discardCard) => sameKnownCard(discardCard, card))),
+        ],
+      };
+    }),
+  };
+}
+
+function shouldProjectSingleGroup(currentView: GameView, group: ReplayActionGroup): boolean {
+  return group.events.some((event) => event.kind === 'Play' && needsPlayedCardDiscardProjection(currentView, event));
+}
+
+function needsPlayedCardDiscardProjection(currentView: GameView, event: ActionTimelineEvent): boolean {
+  const playerIndex = event.playerIndex;
+  if (playerIndex === undefined) {
+    return false;
+  }
+  const player = currentView.players[playerIndex];
+  if (!player) {
+    return false;
+  }
+  return !player.hand.some((card) => eventCardMatches(card, event))
+    && !player.discard.some((card) => eventCardMatches(card, event))
+    && !playerHasCardInPlay(player, event);
+}
+
 function applyReplayEvent(view: GameView, currentView: GameView, event: ActionTimelineEvent): void {
   const playerIndex = event.playerIndex;
   if (playerIndex === undefined || !view.players[playerIndex] || !currentView.players[playerIndex]) {
@@ -467,6 +563,19 @@ function applyReplayEvent(view: GameView, currentView: GameView, event: ActionTi
   if (event.kind === 'Draw' || event.kind === 'DrawReverse') {
     player.deckCount = Math.max(0, player.deckCount - 1);
     player.hand = addCardToHand(player, currentPlayer);
+    return;
+  }
+
+  if (event.kind === 'Play') {
+    player.hand = removeMovedCardFromHand(player.hand, event);
+    if (playerHasCardInPlay(currentPlayer, event)) {
+      player.active = currentPlayer.active;
+      player.bench = currentPlayer.bench;
+      player.stadium = currentPlayer.stadium;
+      player.playZone = currentPlayer.playZone;
+      return;
+    }
+    player.discard = addCardToDiscard(player, currentPlayer, event);
     return;
   }
 
@@ -484,8 +593,8 @@ function applyReplayEvent(view: GameView, currentView: GameView, event: ActionTi
   const params = event.params as Record<string, unknown> | undefined;
   const fromArea = Number(params?.fromArea);
   const toArea = Number(params?.toArea);
-  applyReplayAreaDelta(player, currentPlayer, fromArea, -1);
-  applyReplayAreaDelta(player, currentPlayer, toArea, 1);
+  applyReplayAreaDelta(player, currentPlayer, fromArea, -1, event);
+  applyReplayAreaDelta(player, currentPlayer, toArea, 1, event);
 }
 
 function isBoardStateEvent(kind: string | undefined): boolean {
@@ -504,13 +613,19 @@ function isBoardStateEvent(kind: string | undefined): boolean {
   ].includes(kind ?? '');
 }
 
-function applyReplayAreaDelta(player: PlayerView, currentPlayer: PlayerView, area: number, delta: -1 | 1): void {
+function applyReplayAreaDelta(
+  player: PlayerView,
+  currentPlayer: PlayerView,
+  area: number,
+  delta: -1 | 1,
+  event?: ActionTimelineEvent,
+): void {
   if (area === CabtAreaType.DECK) {
     player.deckCount = Math.max(0, player.deckCount + delta);
     return;
   }
   if (area === CabtAreaType.HAND) {
-    player.hand = delta > 0 ? addCardToHand(player, currentPlayer) : resizedHand(player.hand, player.hand.length - 1);
+    player.hand = delta > 0 ? addCardToHand(player, currentPlayer) : removeMovedCardFromHand(player.hand, event);
     return;
   }
   if (area === CabtAreaType.PRIZE) {
@@ -531,9 +646,96 @@ function applyReplayAreaDelta(player: PlayerView, currentPlayer: PlayerView, are
   }
 }
 
+function removeMovedCardFromHand(hand: CardView[], event: ActionTimelineEvent | undefined): CardView[] {
+  const params = event?.params as Record<string, unknown> | undefined;
+  const serial = Number(params?.serial);
+  if (Number.isFinite(serial)) {
+    const index = hand.findIndex((card) => card.serial === serial);
+    if (index >= 0) {
+      return removeAt(hand, index);
+    }
+  }
+
+  const cardId = Number(params?.cardId);
+  if (Number.isFinite(cardId)) {
+    const index = hand.findIndex((card) => card.id === cardId);
+    if (index >= 0) {
+      return removeAt(hand, index);
+    }
+  }
+
+  return resizedHand(hand, hand.length - 1);
+}
+
+function removeAt<T>(items: T[], index: number): T[] {
+  return [...items.slice(0, index), ...items.slice(index + 1)];
+}
+
 function addCardToHand(player: PlayerView, currentPlayer: PlayerView): CardView[] {
   const nextCard = currentPlayer.hand[player.hand.length] ?? faceDownCard();
   return [...player.hand, nextCard];
+}
+
+function addCardToDiscard(player: PlayerView, currentPlayer: PlayerView, event: ActionTimelineEvent): CardView[] {
+  const eventCard = cardViewFromEvent(event);
+  const currentNewCard = currentPlayer.discard.find((card) => eventCardMatches(card, event));
+  const nextCard = currentNewCard ?? eventCard ?? currentPlayer.discard.at(-1) ?? faceDownCard();
+  if (player.discard.some((card) => sameKnownCard(card, nextCard))) {
+    return player.discard;
+  }
+  return [...player.discard, nextCard];
+}
+
+function cardViewFromEvent(event: ActionTimelineEvent): CardView | undefined {
+  const params = event.params as Record<string, unknown> | undefined;
+  const cardId = Number(params?.cardId);
+  if (!Number.isFinite(cardId)) {
+    return undefined;
+  }
+  return cardToView({
+    id: cardId,
+    serial: Number.isFinite(Number(params?.serial)) ? Number(params?.serial) : undefined,
+    playerIndex: event.playerIndex,
+  });
+}
+
+function eventCardMatches(card: CardView, event: ActionTimelineEvent): boolean {
+  const params = event.params as Record<string, unknown> | undefined;
+  const serial = Number(params?.serial);
+  if (Number.isFinite(serial)) {
+    return card.serial === serial;
+  }
+  const cardId = Number(params?.cardId);
+  return Number.isFinite(cardId) && card.id === cardId;
+}
+
+function sameKnownCard(left: CardView, right: CardView): boolean {
+  if (left.serial !== undefined && right.serial !== undefined) {
+    return left.serial === right.serial;
+  }
+  return left.id === right.id && left.name === right.name;
+}
+
+function playerHasDiscardCard(player: PlayerView | undefined, card: CardView): boolean {
+  return !!player?.discard.some((discardCard) => sameKnownCard(discardCard, card));
+}
+
+function playerHasCardInPlay(player: PlayerView, event: ActionTimelineEvent): boolean {
+  return [
+    ...slotCards(player.active),
+    ...player.bench.flatMap(slotCards),
+    ...player.stadium,
+    ...player.playZone,
+  ].some((card) => eventCardMatches(card, event));
+}
+
+function slotCards(slot: PokemonSlotView): CardView[] {
+  return [
+    ...(slot.pokemon ? [slot.pokemon] : []),
+    ...slot.cards,
+    ...slot.energy,
+    ...slot.tools,
+  ];
 }
 
 function resizedHand(hand: CardView[], count: number): CardView[] {
@@ -682,6 +884,8 @@ function cardToView(cardRef: CabtCardRef): CardView {
   const isTrainer = !isPokemon && !isEnergy;
   const view: CardView = {
     id: cardRef.id,
+    serial: cardRef.serial,
+    playerIndex: cardRef.playerIndex,
     name,
     fullName: name,
     set: data?.set || undefined,

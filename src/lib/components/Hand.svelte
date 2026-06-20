@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { flip } from 'svelte/animate';
+  import type { TransitionConfig } from 'svelte/transition';
   import CardTile from './CardTile.svelte';
   import type { PlayerView } from '../game/types';
 
@@ -31,6 +33,13 @@
   let playableSet = $derived(new Set(playableIndexes));
   let placedSet = $derived(new Set(placedIndexes));
   let hasPlayableFilter = $derived(playableIndexes.length > 0);
+  let visibleHandEntries = $derived(player.hand
+    .map((card, index) => ({
+      card,
+      index,
+      key: cardKey(card, index),
+    }))
+    .filter((entry) => !placedSet.has(entry.index)));
   let handElement = $state<HTMLDivElement>();
   let canScrollLeft = $state(false);
   let canScrollRight = $state(false);
@@ -44,6 +53,26 @@
     const maxScrollLeft = handElement.scrollWidth - handElement.clientWidth;
     canScrollLeft = handElement.scrollLeft > 1;
     canScrollRight = maxScrollLeft - handElement.scrollLeft > 1;
+  }
+
+  function cardKey(card: PlayerView['hand'][number], index: number) {
+    return card.serial ?? `${card.id}:${card.name}:${index}`;
+  }
+
+  function handCardTransition(
+    _node: Element,
+    { duration = 150 }: { duration?: number } = {},
+  ): TransitionConfig {
+    return {
+      duration,
+      css: (t) => {
+        const scale = 0.94 + (t * 0.06);
+        return `
+          opacity: ${t};
+          transform: scale(${scale});
+        `;
+      },
+    };
   }
 
   $effect(() => {
@@ -74,24 +103,35 @@
   data-card-anchor={`player:${player.index}:hand`}
   onscroll={updateScrollIndicators}
 >
-  {#each player.hand as card, index}
+  {#each visibleHandEntries as entry (entry.key)}
+    {@const card = entry.card}
+    {@const index = entry.index}
     {@const cardDisabled = disabled || (hasPlayableFilter && (!playableSet.has(index) || placedSet.has(index)))}
-    {#if !placedSet.has(index)}
-      <CardTile
-        {card}
-        compact
-        selected={selectedHand?.playerIndex === player.index && selectedHand.handIndex === index}
-        playable={playableSet.has(index)}
-        draggable={!cardDisabled && !concealed}
-        disabled={cardDisabled}
-        interactive={!cardDisabled && !concealed}
-        faceDown={concealed}
-        testId={`hand-card-${player.index}-${index}`}
-        onclick={() => onSelect(player.index, index)}
-        ondragstart={(event) => onDrag(player.index, index, event)}
-        ondragend={onDragEnd}
-      />
-    {/if}
+    <div
+      class="hand-card-frame"
+      animate:flip={{ duration: 180 }}
+    >
+      <div
+        class="hand-card-content"
+        in:handCardTransition={{ duration: 140 }}
+        out:handCardTransition={{ duration: 110 }}
+      >
+        <CardTile
+          {card}
+          compact
+          selected={selectedHand?.playerIndex === player.index && selectedHand.handIndex === index}
+          playable={playableSet.has(index)}
+          draggable={!cardDisabled && !concealed}
+          disabled={cardDisabled}
+          interactive={!cardDisabled && !concealed}
+          faceDown={concealed}
+          testId={`hand-card-${player.index}-${index}`}
+          onclick={() => onSelect(player.index, index)}
+          ondragstart={(event) => onDrag(player.index, index, event)}
+          ondragend={onDragEnd}
+        />
+      </div>
+    </div>
   {/each}
 </div>
 
@@ -144,6 +184,19 @@
     flex: 1 0 0;
   }
 
+  .hand-card-frame {
+    flex: 0 0 auto;
+    display: grid;
+    place-items: center;
+    will-change: transform;
+  }
+
+  .hand-card-content {
+    display: grid;
+    place-items: center;
+    will-change: transform, opacity;
+  }
+
   .hand:not(.concealed) :global(.card-tile) {
     flex: 0 0 auto;
   }
@@ -163,10 +216,14 @@
     mask-image: none;
   }
 
-  .hand.concealed :global(.card-tile) {
-    width: calc(var(--card-w) * 0.78);
+  .hand.concealed .hand-card-frame {
+    flex: 0 0 auto;
     margin-right: calc(var(--card-w) * -0.46);
     transform: translateY(calc(var(--card-w) * -0.52));
+  }
+
+  .hand.concealed :global(.card-tile) {
+    width: calc(var(--card-w) * 0.78);
   }
 
   .hand.concealed :global(.card-tile.compact) {
@@ -204,6 +261,10 @@
 
   :global(.player-panel.top) .hand.concealed :global(.card-tile) {
     width: var(--card-w);
+  }
+
+  :global(.player-panel.top) .hand.concealed .hand-card-frame {
+    margin-right: 0;
     transform: none;
   }
 

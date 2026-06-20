@@ -525,12 +525,16 @@ export function cabtCardToView(cardRef: CabtCard, dataMaps: CabtDataMaps): CardV
   if (!data) {
     return {
       id: cardRef.id,
+      serial: cardRef.serial,
+      playerIndex: cardRef.playerIndex,
       name: `Card ${cardRef.id}`,
       fullName: `Card ${cardRef.id}`,
     };
   }
   const view: CardView = {
     id: data.cardId,
+    serial: cardRef.serial,
+    playerIndex: cardRef.playerIndex,
     name: data.name,
     fullName: data.name,
     set: data.set,

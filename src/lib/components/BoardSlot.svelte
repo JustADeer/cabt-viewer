@@ -79,9 +79,12 @@
   class:prompt-selected={promptSelected}
   class={`board-slot ${placement}`}
   data-testid={`slot-${slot.ownerIndex}-${slot.slot}-${slot.index}`}
+  data-card-anchor={`player:${slot.ownerIndex}:${slot.slot}:${slot.index}`}
   data-owner-index={slot.ownerIndex}
   data-slot-kind={slot.slot}
   data-slot-index={slot.index}
+  data-pokemon-card-id={slot.pokemon?.id ?? undefined}
+  data-pokemon-serial={slot.pokemon?.serial ?? undefined}
   title={slot.pokemon?.fullName ?? (slot.slot === 'active' ? 'Active' : `Bench ${slot.index + 1}`)}
   {onclick}
   {ondragover}

@@ -71,6 +71,9 @@
     draggable={draggable && !disabled}
     {disabled}
     data-testid={testId || undefined}
+    data-card-id={card?.id ?? undefined}
+    data-card-serial={card?.serial ?? undefined}
+    data-card-player-index={card?.playerIndex ?? undefined}
     title={card?.fullName ?? label}
     {onclick}
     {ondragstart}
@@ -98,6 +101,9 @@
     class:playable
     class={`card-tile ${typeClass}`}
     data-testid={testId || undefined}
+    data-card-id={card?.id ?? undefined}
+    data-card-serial={card?.serial ?? undefined}
+    data-card-player-index={card?.playerIndex ?? undefined}
     title={card?.fullName ?? label}
   >
     {#if showImage}

@@ -158,7 +158,15 @@ describe('cabtReplayToSnapshot', () => {
             active: [],
             bench: [],
             benchMax: 5,
-            handCount: 7,
+            hand: [
+              { id: 3, serial: 46 },
+              { id: 1235, serial: 26 },
+              { id: 722, serial: 6 },
+              { id: 3, serial: 31 },
+              { id: 3, serial: 50 },
+              { id: 3, serial: 29 },
+              { id: 1145, serial: 14 },
+            ],
             deckCount: 53,
             prize: [],
           }, {
@@ -172,7 +180,7 @@ describe('cabtReplayToSnapshot', () => {
         },
       }, {
         logs: [
-          { type: 'MoveCard', playerIndex: 0, cardId: 722, fromArea: CabtAreaType.HAND, toArea: CabtAreaType.ACTIVE },
+          { type: 'MoveCard', playerIndex: 0, cardId: 722, serial: 6, fromArea: CabtAreaType.HAND, toArea: CabtAreaType.ACTIVE },
           ...Array.from({ length: 6 }, () => ({
             type: 'MoveCardReverse',
             playerIndex: 0,
@@ -185,10 +193,17 @@ describe('cabtReplayToSnapshot', () => {
           yourIndex: 0,
           result: -1,
           players: [{
-            active: [{ id: 722, serial: 10, hp: 70, maxHp: 70 }],
+            active: [{ id: 722, serial: 6, hp: 70, maxHp: 70 }],
             bench: [],
             benchMax: 5,
-            handCount: 6,
+            hand: [
+              { id: 3, serial: 46 },
+              { id: 1235, serial: 26 },
+              { id: 3, serial: 31 },
+              { id: 3, serial: 50 },
+              { id: 3, serial: 29 },
+              { id: 1145, serial: 14 },
+            ],
             deckCount: 47,
             prize: Array.from({ length: 6 }, () => null),
           }, {
@@ -207,9 +222,253 @@ describe('cabtReplayToSnapshot', () => {
     expect(snapshot.steps[1].displayView?.players[0].active.empty).toBe(false);
     expect(snapshot.steps[1].displayView?.players[0].prizesLeft).toBe(0);
     expect(snapshot.steps[1].displayView?.players[0].deckCount).toBe(53);
+    expect(snapshot.steps[1].displayView?.players[0].hand.map((card) => card.serial)).toEqual([46, 26, 31, 50, 29, 14]);
     expect(snapshot.steps[2].label).toBe('Player 1 set 6 Prize cards.');
     expect(snapshot.steps[2].displayView?.players[0].prizesLeft).toBe(6);
     expect(snapshot.steps[2].displayView?.players[0].deckCount).toBe(47);
+  });
+
+  it('shows played hand cards in discard on the play step', () => {
+    const snapshot = cabtReplayToSnapshot({
+      visualize: [{
+        current: {
+          turn: 1,
+          yourIndex: 0,
+          result: -1,
+          players: [{
+            active: [{ id: 722, serial: 6, hp: 70, maxHp: 70 }],
+            bench: [],
+            benchMax: 5,
+            hand: [
+              { id: 3, serial: 46 },
+              { id: 1145, serial: 14 },
+            ],
+            deckCount: 46,
+            discard: [],
+            prize: [],
+          }, {
+            active: [],
+            bench: [],
+            benchMax: 5,
+            handCount: 0,
+            deckCount: 53,
+            prize: [],
+          }],
+        },
+      }, {
+        logs: [
+          { type: 'Play', playerIndex: 0, cardId: 1145, serial: 14 },
+        ],
+        current: {
+          turn: 1,
+          yourIndex: 0,
+          result: -1,
+          players: [{
+            active: [{ id: 722, serial: 6, hp: 70, maxHp: 70 }],
+            bench: [],
+            benchMax: 5,
+            hand: [
+              { id: 3, serial: 46 },
+            ],
+            deckCount: 46,
+            discard: [{ id: 1145, serial: 14 }],
+            prize: [],
+          }, {
+            active: [],
+            bench: [],
+            benchMax: 5,
+            handCount: 0,
+            deckCount: 53,
+            prize: [],
+          }],
+        },
+      }],
+    });
+
+    expect(snapshot.steps[1].label).toBe('Player 1 played Mega Signal.');
+    expect(snapshot.views[snapshot.steps[1].stateIndex].players[0].hand.map((card) => card.serial)).toEqual([46]);
+    expect(snapshot.views[snapshot.steps[1].stateIndex].players[0].discard.map((card) => card.serial)).toEqual([14]);
+  });
+
+  it('projects played trainer cards into discard when the engine frame is still resolving their effect', () => {
+    const snapshot = cabtReplayToSnapshot({
+      visualize: [{
+        current: {
+          turn: 1,
+          yourIndex: 0,
+          result: -1,
+          players: [{
+            active: [{ id: 722, serial: 6, hp: 70, maxHp: 70 }],
+            bench: [],
+            benchMax: 5,
+            hand: [
+              { id: 3, serial: 46 },
+              { id: 1145, serial: 14 },
+            ],
+            deckCount: 46,
+            discard: [],
+            prize: [],
+          }, {
+            active: [],
+            bench: [],
+            benchMax: 5,
+            handCount: 0,
+            deckCount: 53,
+            prize: [],
+          }],
+        },
+      }, {
+        logs: [
+          { type: 'Play', playerIndex: 0, cardId: 1145, serial: 14 },
+        ],
+        current: {
+          turn: 1,
+          yourIndex: 0,
+          result: -1,
+          players: [{
+            active: [{ id: 722, serial: 6, hp: 70, maxHp: 70 }],
+            bench: [],
+            benchMax: 5,
+            hand: [
+              { id: 3, serial: 46 },
+            ],
+            deckCount: 46,
+            discard: [],
+            prize: [],
+          }, {
+            active: [],
+            bench: [],
+            benchMax: 5,
+            handCount: 0,
+            deckCount: 53,
+            prize: [],
+          }],
+        },
+      }, {
+        select: {
+          type: 'Card',
+          context: 'AttachFrom',
+        },
+        current: {
+          turn: 1,
+          yourIndex: 0,
+          result: -1,
+          players: [{
+            active: [{ id: 722, serial: 6, hp: 70, maxHp: 70 }],
+            bench: [],
+            benchMax: 5,
+            hand: [
+              { id: 3, serial: 46 },
+            ],
+            deckCount: 46,
+            discard: [],
+            prize: [],
+          }, {
+            active: [],
+            bench: [],
+            benchMax: 5,
+            handCount: 0,
+            deckCount: 53,
+            prize: [],
+          }],
+        },
+      }, {
+        logs: [
+          { type: 'MoveCard', playerIndex: 0, cardId: 723, serial: 13, fromArea: CabtAreaType.DECK, toArea: CabtAreaType.HAND },
+        ],
+        current: {
+          turn: 1,
+          yourIndex: 0,
+          result: -1,
+          players: [{
+            active: [{ id: 722, serial: 6, hp: 70, maxHp: 70 }],
+            bench: [],
+            benchMax: 5,
+            hand: [
+              { id: 3, serial: 46 },
+              { id: 723, serial: 13 },
+            ],
+            deckCount: 45,
+            discard: [{ id: 1145, serial: 14 }],
+            prize: [],
+          }, {
+            active: [],
+            bench: [],
+            benchMax: 5,
+            handCount: 0,
+            deckCount: 53,
+            prize: [],
+          }],
+        },
+      }],
+    });
+
+    expect(snapshot.steps[1].label).toBe('Player 1 played Mega Signal.');
+    expect(snapshot.steps[1].displayView?.players[0].hand.map((card) => card.serial)).toEqual([46]);
+    expect(snapshot.steps[1].displayView?.players[0].discard.map((card) => card.serial)).toEqual([14]);
+    expect(snapshot.views[snapshot.steps[1].stateIndex].players[0].discard).toHaveLength(0);
+    expect(snapshot.steps[2].displayView?.players[0].discard.map((card) => card.serial)).toEqual([14]);
+    expect(snapshot.views[snapshot.steps[2].stateIndex].players[0].discard).toHaveLength(0);
+    expect(snapshot.views[snapshot.steps[3].stateIndex].players[0].discard.map((card) => card.serial)).toEqual([14]);
+  });
+
+  it('does not project played Pokemon cards into discard when they enter play', () => {
+    const snapshot = cabtReplayToSnapshot({
+      visualize: [{
+        current: {
+          turn: 1,
+          yourIndex: 0,
+          result: -1,
+          players: [{
+            active: [{ id: 722, serial: 6, hp: 70, maxHp: 70 }],
+            bench: [],
+            benchMax: 5,
+            hand: [
+              { id: 722, serial: 7 },
+            ],
+            deckCount: 46,
+            discard: [],
+            prize: [],
+          }, {
+            active: [],
+            bench: [],
+            benchMax: 5,
+            handCount: 0,
+            deckCount: 53,
+            prize: [],
+          }],
+        },
+      }, {
+        logs: [
+          { type: 'Play', playerIndex: 0, cardId: 722, serial: 7 },
+        ],
+        current: {
+          turn: 1,
+          yourIndex: 0,
+          result: -1,
+          players: [{
+            active: [{ id: 722, serial: 6, hp: 70, maxHp: 70 }],
+            bench: [{ id: 722, serial: 7, hp: 70, maxHp: 70 }],
+            benchMax: 5,
+            hand: [],
+            deckCount: 46,
+            discard: [],
+            prize: [],
+          }, {
+            active: [],
+            bench: [],
+            benchMax: 5,
+            handCount: 0,
+            deckCount: 53,
+            prize: [],
+          }],
+        },
+      }],
+    });
+
+    expect(snapshot.steps[1].displayView).toBeUndefined();
+    expect(snapshot.views[snapshot.steps[1].stateIndex].players[0].discard).toHaveLength(0);
+    expect(snapshot.views[snapshot.steps[1].stateIndex].players[0].bench[0].pokemon?.serial).toBe(7);
   });
 
   it('labels mulligan hand returns without revealing returned card names', () => {

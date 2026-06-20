@@ -2,7 +2,7 @@
   import CardTile from './CardTile.svelte';
   import DeckDiscardAnimation from './DeckDiscardAnimation.svelte';
   import DeckShuffleAnimation from './DeckShuffleAnimation.svelte';
-  import type { PlayerView } from '../game/types';
+  import type { CardView, PlayerView } from '../game/types';
   import type { ActionTimelineEvent } from '../game/types';
 
   type Props = {
@@ -59,6 +59,13 @@
   function visiblePrizeCards(prizesLeft: number) {
     const count = Math.min(6, Math.max(0, Math.round(prizesLeft)));
     return Array.from({ length: count }, (_, index) => index);
+  }
+
+  function visibleDiscardCards(discard: CardView[]) {
+    return discard.slice(-2).map((card, index, cards) => ({
+      card,
+      layer: index === cards.length - 1 ? 'top' : 'under',
+    }));
   }
 </script>
 
@@ -121,7 +128,13 @@
           onclick={() => showDiscard(topPlayer)}
         >
           {#if topPlayer.discard.length}
-            <CardTile card={topPlayer.discard[topPlayer.discard.length - 1]} compact />
+            <span class="discard-card-stack">
+              {#each visibleDiscardCards(topPlayer.discard) as entry (`${entry.layer}-${entry.card.serial ?? entry.card.id ?? entry.card.name}`)}
+                <span class:discard-card-under={entry.layer === 'under'} class:discard-card-top={entry.layer === 'top'}>
+                  <CardTile card={entry.card} compact />
+                </span>
+              {/each}
+            </span>
           {/if}
           <span class="pile-count">{topPlayer.discard.length}</span>
         </button>
@@ -195,7 +208,13 @@
           onclick={() => showDiscard(bottomPlayer)}
         >
           {#if bottomPlayer.discard.length}
-            <CardTile card={bottomPlayer.discard[bottomPlayer.discard.length - 1]} compact />
+            <span class="discard-card-stack">
+              {#each visibleDiscardCards(bottomPlayer.discard) as entry (`${entry.layer}-${entry.card.serial ?? entry.card.id ?? entry.card.name}`)}
+                <span class:discard-card-under={entry.layer === 'under'} class:discard-card-top={entry.layer === 'top'}>
+                  <CardTile card={entry.card} compact />
+                </span>
+              {/each}
+            </span>
           {/if}
           <span class="pile-count">{bottomPlayer.discard.length}</span>
         </button>
@@ -420,6 +439,22 @@
     color: var(--discard-text);
     background: var(--discard-bg);
     overflow: visible;
+  }
+
+  .discard-card-stack,
+  .discard-card-stack > span {
+    position: absolute;
+    inset: 0;
+    display: block;
+    pointer-events: none;
+  }
+
+  .discard-card-under {
+    z-index: 1;
+  }
+
+  .discard-card-top {
+    z-index: 2;
   }
 
   .discard-pile :global(.card-tile) {
