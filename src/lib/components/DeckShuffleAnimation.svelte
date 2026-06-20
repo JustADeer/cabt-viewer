@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onDestroy, onMount } from 'svelte';
+  import { actionAnimationBatchEvents, actionAnimationStartMs } from '../cabt/actionAnimationSchedule';
   import type { ActionTimelineEvent } from '../game/types';
 
   type Props = {
@@ -78,7 +79,8 @@
       return;
     }
 
-    const shuffleEvents = currentEvents.filter((event) => {
+    const animationEvents = actionAnimationBatchEvents(currentEvents, seenEventIds, replayMode, scopeChanged);
+    const shuffleEvents = animationEvents.filter((event) => {
       if (event.kind !== 'Shuffle' || event.playerIndex !== playerIndex) {
         return false;
       }
@@ -92,10 +94,10 @@
       seenEventIds.add(event.id);
     }
 
-    shuffleEvents.forEach((event, index) => {
+    shuffleEvents.forEach((event) => {
       const timer = setTimeout(() => {
         startShuffle();
-      }, index * 160);
+      }, actionAnimationStartMs(animationEvents, event));
       timers.push(timer);
     });
   });

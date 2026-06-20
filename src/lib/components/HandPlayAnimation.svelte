@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onDestroy, onMount } from 'svelte';
+  import { actionAnimationBatchEvents, actionAnimationStartMs } from '../cabt/actionAnimationSchedule';
   import { cabtCardToView } from '../cabt/cardView';
   import { CabtAreaType } from '../cabt/types';
   import type { ActionTimelineEvent } from '../game/types';
@@ -60,7 +61,6 @@
 
   const timers: ReturnType<typeof setTimeout>[] = [];
   const cardMoveDurationMs = 360;
-  const cardSequenceStepMs = 60;
   const cardHeightToWidthRatio = 88 / 63;
   let nextPlayId = 0;
   let seenEventIds = new Set<number>();
@@ -108,7 +108,8 @@
       clearPlays();
     }
 
-    const playEvents = currentEvents.filter((event) => {
+    const animationEvents = actionAnimationBatchEvents(currentEvents, seenEventIds, replayMode, scopeChanged);
+    const playEvents = animationEvents.filter((event) => {
       if (!isHandPlayEvent(event)) {
         return false;
       }
@@ -123,7 +124,7 @@
     }
 
     if (playEvents.length) {
-      startPlay(playEvents);
+      startPlay(playEvents, animationEvents);
     }
     previousCardRects = snapshotHandCardRects();
   });
@@ -143,12 +144,12 @@
       && Number.isFinite(Number(params?.cardId));
   }
 
-  function startPlay(playEvents: ActionTimelineEvent[]) {
+  function startPlay(playEvents: ActionTimelineEvent[], animationEvents: ActionTimelineEvent[]) {
     if (reduceMotion) {
       return;
     }
 
-    const targetAnimations = playEvents.flatMap((event, index) => targetAnimationForEvent(event, index));
+    const targetAnimations = playEvents.flatMap((event) => targetAnimationForEvent(event, animationEvents));
     if (!targetAnimations.length) {
       return;
     }
@@ -183,7 +184,7 @@
     activeTargets = [];
   }
 
-  function targetAnimationForEvent(event: ActionTimelineEvent, order: number): TargetAnimation[] {
+  function targetAnimationForEvent(event: ActionTimelineEvent, animationEvents: ActionTimelineEvent[]): TargetAnimation[] {
     if (event.playerIndex === undefined) {
       return [];
     }
@@ -209,8 +210,9 @@
     }
 
     const card = cabtCardToView(cardId);
+    const delayMs = actionAnimationStartMs(animationEvents, event);
     if (event.kind === 'Attach') {
-      return [slotAttachAnimationForEvent(target, sourceRect, targetRect, card.imageUrl ?? '', order)];
+      return [slotAttachAnimationForEvent(target, sourceRect, targetRect, card.imageUrl ?? '', delayMs)];
     }
 
     const sourceQuad = sourceQuadForHand(handElement, sourceRect);
@@ -220,7 +222,7 @@
       kind: 'fixed',
       id: nextPlayId++,
       target,
-      delayMs: order * cardSequenceStepMs,
+      delayMs,
       width: sourceRect.width,
       height: sourceRect.height,
       startTransform: cssMatrix3dForQuad(sourceRect.width, sourceRect.height, sourceQuad),
@@ -235,7 +237,7 @@
     sourceRect: DOMRect,
     targetRect: DOMRect,
     imageUrl: string,
-    order: number,
+    delayMs: number,
   ): SlotAttachAnimation {
     const sourceCenter = centerOf(sourceRect);
     const targetCenter = centerOf(targetRect);
@@ -244,7 +246,7 @@
     return {
       kind: 'slotAttach',
       target,
-      delayMs: order * cardSequenceStepMs,
+      delayMs,
       imageUrl,
       startX,
       startY,

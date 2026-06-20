@@ -61,6 +61,20 @@ Watch especially for clipping, accidental shrinking, layout shifts, text
 overlap, mismatched scale between active and bench views, and shadows or glows
 being cut off by scroll containers.
 
+## Animation Development
+
+Animations should have one clear owner for the moving visual. When the final
+game state already contains the destination card, hide that destination only
+until the animated card hands off to it. When the final game state omits the
+source card, snapshot the previous visual state and animate that snapshot rather
+than letting the source disappear.
+
+Keep card motion in the correct frame of reference for the whole animation. If a
+card starts or ends in a tilted board zone, either animate inside that coordinate
+system or smoothly transition between the hand and board transforms. Avoid end
+snaps, duplicate cards, and placeholder overlays that visibly change badges,
+card aspect ratios, or stack layout.
+
 ## Checks
 
 Do not run expensive checks reflexively after every small CSS tweak. Agents are

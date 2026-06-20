@@ -1,6 +1,8 @@
 <script lang="ts">
   import { onDestroy, onMount } from 'svelte';
+  import { actionAnimationBatchEvents, actionAnimationStartMs } from '../cabt/actionAnimationSchedule';
   import { cabtCardToView } from '../cabt/cardView';
+  import { CabtAreaType } from '../cabt/types';
   import type { ActionTimelineEvent, CardView } from '../game/types';
 
   type Props = {
@@ -46,7 +48,6 @@
 
   const timers: ReturnType<typeof setTimeout>[] = [];
   const cardMoveDurationMs = 320;
-  const cardSequenceStepMs = 35;
   const cardHandoffMs = Math.round(cardMoveDurationMs * 0.88);
   const cardHeightToWidthRatio = 88 / 63;
   let draws = $state<DrawAnimation[]>([]);
@@ -92,7 +93,8 @@
       clearDraws();
     }
 
-    const drawEvents = currentEvents.filter((event) => {
+    const animationEvents = actionAnimationBatchEvents(currentEvents, seenEventIds, replayMode, scopeChanged);
+    const drawEvents = animationEvents.filter((event) => {
       if (!isDrawEvent(event)) {
         return false;
       }
@@ -107,7 +109,7 @@
     }
 
     if (drawEvents.length) {
-      startDraw(drawEvents);
+      startDraw(drawEvents, animationEvents);
     }
   });
 
@@ -115,7 +117,7 @@
     return event.kind === 'Draw' || event.kind === 'DrawReverse';
   }
 
-  function startDraw(drawEvents: ActionTimelineEvent[]) {
+  function startDraw(drawEvents: ActionTimelineEvent[], animationEvents: ActionTimelineEvent[]) {
     if (reduceMotion) {
       return;
     }
@@ -131,7 +133,7 @@
     }
 
     const playerDraws = [...eventsByPlayer.entries()].map(([playerIndex, playerEvents]) =>
-      spritesForPlayer(playerIndex, playerEvents),
+      spritesForPlayer(playerIndex, playerEvents, animationEvents),
     );
     const sprites = playerDraws.flatMap((draw) => draw.sprites);
     const hiddenTargets = playerDraws.flatMap((draw) => draw.hiddenTargets);
@@ -173,7 +175,7 @@
     draws = [];
   }
 
-  function spritesForPlayer(playerIndex: number, playerEvents: ActionTimelineEvent[]): PlayerDrawSprites {
+  function spritesForPlayer(playerIndex: number, playerEvents: ActionTimelineEvent[], animationEvents: ActionTimelineEvent[]): PlayerDrawSprites {
     const deckElement = deckTopElement(playerIndex);
     const handElement = handAnchor(playerIndex);
     if (!deckElement || !handElement) {
@@ -192,25 +194,28 @@
     const startCenter = centerOf(deckRect);
     const spriteWidth = deckRect.width;
     const spriteHeight = spriteWidth * cardHeightToWidthRatio;
-    const hiddenTargets: HTMLElement[] = [];
+    const resetHandBeforeDraw = hasHandToDeckReset(playerIndex, animationEvents);
+    const hiddenTargets: HTMLElement[] = resetHandBeforeDraw ? [...handSlots] : [];
 
     const sprites = playerEvents.map((event, index) => {
-      const targetElement = handSlots[firstTargetIndex + index];
-      if (targetElement) {
+      const params = event.params as Record<string, unknown> | undefined;
+      const serial = Number(params?.serial);
+      const targetElement = resetHandBeforeDraw
+        ? handSlotForSerial(handSlots, serial) ?? handSlots[index]
+        : handSlots[firstTargetIndex + index];
+      if (targetElement && !resetHandBeforeDraw) {
         hiddenTargets.push(targetElement);
       }
       const targetRect = targetElement?.getBoundingClientRect() ?? fallbackHandTarget(handRect, index, playerEvents.length);
       const targetCenter = centerOf(targetRect);
-      const params = event.params as Record<string, unknown> | undefined;
       const cardId = Number(params?.cardId);
-      const serial = Number(params?.serial);
       const reveal = !handConcealed && event.kind === 'Draw' && Number.isFinite(cardId);
       return {
         id: `${event.id}-${Number.isFinite(serial) ? serial : index}`,
         card: reveal ? cabtCardToView(cardId) : undefined,
         reveal,
         order: index + 1,
-        delayMs: index * cardSequenceStepMs,
+        delayMs: actionAnimationStartMs(animationEvents, event),
         startX: startCenter.x - spriteWidth / 2,
         startY: startCenter.y - spriteHeight / 2,
         width: spriteWidth,
@@ -224,6 +229,16 @@
       };
     });
     return { sprites, hiddenTargets };
+  }
+
+  function hasHandToDeckReset(playerIndex: number, animationEvents: ActionTimelineEvent[]): boolean {
+    return animationEvents.some((event) => {
+      const params = event.params as Record<string, unknown> | undefined;
+      return event.kind === 'MoveCard'
+        && event.playerIndex === playerIndex
+        && Number(params?.fromArea) === CabtAreaType.HAND
+        && Number(params?.toArea) === CabtAreaType.DECK;
+    });
   }
 
   function hideTargets(targets: HTMLElement[]) {
@@ -257,8 +272,15 @@
   }
 
   function handCardSlots(handElement: HTMLElement, playerIndex: number): HTMLElement[] {
-    return Array.from(handElement.querySelectorAll(`[data-testid^="hand-card-${playerIndex}-"]`))
+    return Array.from(handElement.querySelectorAll(`[data-hand-card-slot^="player:${playerIndex}:hand:"]`))
       .filter((element): element is HTMLElement => element instanceof HTMLElement);
+  }
+
+  function handSlotForSerial(handSlots: HTMLElement[], serial: number): HTMLElement | undefined {
+    if (!Number.isFinite(serial)) {
+      return undefined;
+    }
+    return handSlots.find((element) => Number(element.dataset.cardSerial) === serial);
   }
 
   function fallbackHandTarget(handRect: DOMRect, index: number, count: number): DOMRect {

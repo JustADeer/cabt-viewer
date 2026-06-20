@@ -1,0 +1,127 @@
+import { CabtAreaType } from './types';
+import type { ActionTimelineEvent } from '../game/types';
+
+export const actionAnimationTiming = {
+  handMoveMs: 360,
+  handMoveStepMs: 60,
+  deckDiscardMs: 300,
+  deckDiscardStepMs: 300,
+  deckDrawMs: 320,
+  deckDrawStepMs: 35,
+  deckShuffleMs: 980,
+} as const;
+
+export function actionAnimationBatchEvents(
+  events: ActionTimelineEvent[],
+  seenEventIds: ReadonlySet<number>,
+  replayMode: boolean,
+  scopeChanged: boolean,
+): ActionTimelineEvent[] {
+  if (replayMode && scopeChanged) {
+    return events;
+  }
+  const firstUnseenIndex = events.findIndex((event) => !seenEventIds.has(event.id));
+  return firstUnseenIndex === -1 ? [] : events.slice(firstUnseenIndex);
+}
+
+type AnimationPhase = {
+  key: string;
+  durationMs: number;
+  stepMs: number;
+};
+
+export function actionAnimationStartMs(events: ActionTimelineEvent[], targetEvent: ActionTimelineEvent): number {
+  let elapsedMs = 0;
+  let group: { key: string; durationMs: number; stepMs: number; count: number } | null = null;
+
+  for (const event of events) {
+    const phase = animationPhaseForEvent(event);
+    if (!phase) {
+      if (event.id === targetEvent.id) {
+        return elapsedMs;
+      }
+      continue;
+    }
+
+    if (!group || group.key !== phase.key) {
+      if (group) {
+        elapsedMs += phaseDurationMs(group.durationMs, group.stepMs, group.count);
+      }
+      group = {
+        key: phase.key,
+        durationMs: phase.durationMs,
+        stepMs: phase.stepMs,
+        count: 0,
+      };
+    }
+
+    const startMs = elapsedMs + group.count * group.stepMs;
+    group.count += 1;
+    if (event.id === targetEvent.id) {
+      return startMs;
+    }
+  }
+
+  return elapsedMs;
+}
+
+function animationPhaseForEvent(event: ActionTimelineEvent): AnimationPhase | null {
+  const playerKey = event.playerIndex ?? 'unknown';
+  const params = event.params as Record<string, unknown> | undefined;
+  const fromArea = Number(params?.fromArea);
+  const toArea = Number(params?.toArea);
+
+  if (event.kind === 'Play' || event.kind === 'Attach') {
+    return {
+      key: `${event.kind}:${playerKey}`,
+      durationMs: actionAnimationTiming.handMoveMs,
+      stepMs: actionAnimationTiming.handMoveStepMs,
+    };
+  }
+
+  if (event.kind === 'MoveCard') {
+    if (fromArea === CabtAreaType.HAND && isHandMoveDestination(toArea)) {
+      return {
+        key: `MoveCard:${playerKey}:${fromArea}->${toArea}`,
+        durationMs: actionAnimationTiming.handMoveMs,
+        stepMs: actionAnimationTiming.handMoveStepMs,
+      };
+    }
+    if (fromArea === CabtAreaType.DECK && toArea === CabtAreaType.DISCARD) {
+      return {
+        key: `DeckDiscard:${playerKey}`,
+        durationMs: actionAnimationTiming.deckDiscardMs,
+        stepMs: actionAnimationTiming.deckDiscardStepMs,
+      };
+    }
+  }
+
+  if (event.kind === 'Shuffle') {
+    return {
+      key: `Shuffle:${playerKey}`,
+      durationMs: actionAnimationTiming.deckShuffleMs,
+      stepMs: actionAnimationTiming.deckShuffleMs,
+    };
+  }
+
+  if (event.kind === 'Draw' || event.kind === 'DrawReverse') {
+    return {
+      key: `Draw:${playerKey}`,
+      durationMs: actionAnimationTiming.deckDrawMs,
+      stepMs: actionAnimationTiming.deckDrawStepMs,
+    };
+  }
+
+  return null;
+}
+
+function phaseDurationMs(durationMs: number, stepMs: number, count: number): number {
+  return count <= 0 ? 0 : durationMs + Math.max(0, count - 1) * stepMs;
+}
+
+function isHandMoveDestination(area: number): boolean {
+  return area === CabtAreaType.DISCARD
+    || area === CabtAreaType.ACTIVE
+    || area === CabtAreaType.BENCH
+    || area === CabtAreaType.DECK;
+}

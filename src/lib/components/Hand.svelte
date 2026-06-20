@@ -109,6 +109,8 @@
     {@const cardDisabled = disabled || (hasPlayableFilter && (!playableSet.has(index) || placedSet.has(index)))}
     <div
       class="hand-card-frame"
+      data-hand-card-slot={`player:${player.index}:hand:${index}`}
+      data-card-serial={card.serial ?? undefined}
       animate:flip={{ duration: 180 }}
     >
       <div

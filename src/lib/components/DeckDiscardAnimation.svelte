@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onDestroy, onMount } from 'svelte';
+  import { actionAnimationBatchEvents, actionAnimationStartMs } from '../cabt/actionAnimationSchedule';
   import { cabtCardToView } from '../cabt/cardView';
   import { CabtAreaType } from '../cabt/types';
   import type { ActionTimelineEvent, CardView } from '../game/types';
@@ -44,7 +45,6 @@
 
   const timers: ReturnType<typeof setTimeout>[] = [];
   const cardMoveDurationMs = 300;
-  const cardSequenceStepMs = cardMoveDurationMs;
   let discards = $state<DiscardAnimation[]>([]);
   let seenEventIds = new Set<number>();
   let initialized = false;
@@ -85,7 +85,8 @@
       return;
     }
 
-    const discardEvents = currentEvents.filter((event) => {
+    const animationEvents = actionAnimationBatchEvents(currentEvents, seenEventIds, replayMode, scopeChanged);
+    const discardEvents = animationEvents.filter((event) => {
       if (!isDeckDiscardEvent(event)) {
         return false;
       }
@@ -100,7 +101,7 @@
     }
 
     if (discardEvents.length) {
-      startDiscard(discardEvents);
+      startDiscard(discardEvents, animationEvents);
     }
   });
 
@@ -113,7 +114,7 @@
       && Number.isFinite(Number(params?.cardId));
   }
 
-  function startDiscard(discardEvents: ActionTimelineEvent[]) {
+  function startDiscard(discardEvents: ActionTimelineEvent[], animationEvents: ActionTimelineEvent[]) {
     if (reduceMotion || !deckElement || !discardElement) {
       return;
     }
@@ -138,7 +139,7 @@
         id: `${event.id}-${Number.isFinite(serial) ? serial : cardId}`,
         card: cabtCardToView(cardId),
         order: index + 1,
-        delayMs: index * cardSequenceStepMs,
+        delayMs: actionAnimationStartMs(animationEvents, event),
         startX,
         startY,
         endX,
@@ -156,7 +157,7 @@
     discards = [...discards, animation];
     const timer = setTimeout(() => {
       discards = discards.filter((item) => item.id !== animation.id);
-    }, Math.max(0, sprites.length - 1) * cardSequenceStepMs + cardMoveDurationMs + 120);
+    }, Math.max(...sprites.map((sprite) => sprite.delayMs)) + cardMoveDurationMs + 120);
     timers.push(timer);
   }
 

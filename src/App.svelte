@@ -7,6 +7,7 @@
   import EndGamePrompt from './lib/components/EndGamePrompt.svelte';
   import DeckDrawAnimation from './lib/components/DeckDrawAnimation.svelte';
   import HandPlayAnimation from './lib/components/HandPlayAnimation.svelte';
+  import HandResetAnimation from './lib/components/HandResetAnimation.svelte';
   import GameBoard from './lib/components/GameBoard.svelte';
   import GameStatus from './lib/components/GameStatus.svelte';
   import Hand from './lib/components/Hand.svelte';
@@ -110,7 +111,7 @@
   let replayMode = $derived(homeMode === 'logs' && !!replayStore.replay);
   let game = $derived(replayMode ? replayStore.currentView : gameStore.game);
   let animationScopeKey = $derived(replayMode
-    ? `replay-${replayStore.stepIndex}`
+    ? `replay-${replayStore.stepIndex}-${replayStore.animationPhaseIndex}`
     : `live-${game?.actionTimeline?.at(-1)?.id ?? 0}`);
   let error = $derived(homeMode === 'logs' ? replayStore.error : gameStore.error);
   let busy = $derived(replayMode ? replayStore.loading : gameStore.busy);
@@ -1299,6 +1300,12 @@
         />
 
         <HandPlayAnimation
+          events={game.actionTimeline ?? []}
+          scopeKey={animationScopeKey}
+          {replayMode}
+        />
+
+        <HandResetAnimation
           events={game.actionTimeline ?? []}
           scopeKey={animationScopeKey}
           {replayMode}

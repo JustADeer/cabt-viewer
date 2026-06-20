@@ -1,10 +1,11 @@
 import cardRows from './cardData.generated.json';
 import attackRows from './attackData.generated.json';
+import { actionAnimationTiming } from './actionAnimationSchedule';
 import { cabtLogsToTimeline } from './logFormat';
 import { CabtAreaType } from './types';
 import { resolveCardImageUrl } from '../game/cardImages';
 import { SlotType, targetFor, type ActionTimelineEvent, type CardView, type GameView, type LogView, type PlayerView, type PokemonSlotView } from '../game/types';
-import type { ReplaySnapshot, ReplayStep } from '../game/replay';
+import type { ReplayAnimationPhase, ReplaySnapshot, ReplayStep } from '../game/replay';
 
 type CardRow = {
   id: number;
@@ -135,6 +136,7 @@ export function cabtReplayToSnapshot(input: unknown): ReplaySnapshot {
           type: group.type,
           actionTimeline: group.events,
           displayView: groupedStepDisplayView(views[index - 1], view, groups, groupIndex),
+          animationPhases: groupedStepAnimationPhases(views[index - 1], view, groups, groupIndex),
           payload: {
             events: group.events,
             select: frame.select,
@@ -393,6 +395,7 @@ function replayStepForFrame({
   payload,
   actionTimeline,
   displayView,
+  animationPhases,
 }: {
   view: GameView;
   stateIndex: number;
@@ -401,6 +404,7 @@ function replayStepForFrame({
   payload: unknown;
   actionTimeline?: ReplayStep['actionTimeline'];
   displayView?: ReplayStep['displayView'];
+  animationPhases?: ReplayStep['animationPhases'];
 }): ReplayStep {
   return {
     index: 0,
@@ -415,6 +419,7 @@ function replayStepForFrame({
     payload,
     actionTimeline,
     displayView,
+    animationPhases,
   };
 }
 
@@ -460,6 +465,164 @@ function groupedStepDisplayView(
     }
   }
 
+  return view;
+}
+
+function groupedStepAnimationPhases(
+  previousView: GameView | undefined,
+  currentView: GameView,
+  groups: ReplayActionGroup[],
+  groupIndex: number,
+): ReplayAnimationPhase[] | undefined {
+  const group = groups[groupIndex];
+  if (!previousView || !group) {
+    return undefined;
+  }
+  const eventPhases = animationEventPhases(group.events);
+  if (eventPhases.length <= 1) {
+    return undefined;
+  }
+
+  let phaseStartView = projectedViewForEvents(previousView, currentView, groups.slice(0, groupIndex).flatMap((item) => item.events));
+  const phases: ReplayAnimationPhase[] = [];
+  for (const phase of eventPhases) {
+    const phaseView = phase.usesSourceView
+      ? phaseStartView
+      : projectedViewForEvents(phaseStartView, currentView, phase.events);
+    phases.push({
+      key: phase.key,
+      view: {
+        ...phaseView,
+        actionTimeline: phase.events,
+      },
+      actionTimeline: phase.events,
+      durationMs: phase.durationMs,
+    });
+    phaseStartView = projectedViewForEvents(phaseStartView, currentView, phase.events);
+  }
+  return phases;
+}
+
+type AnimationEventPhase = {
+  key: string;
+  events: ActionTimelineEvent[];
+  durationMs: number;
+  usesSourceView: boolean;
+};
+
+function animationEventPhases(events: ActionTimelineEvent[]): AnimationEventPhase[] {
+  const phases: AnimationEventPhase[] = [];
+  for (const event of events) {
+    const key = animationPhaseKey(event);
+    if (!key) {
+      const last = phases.at(-1);
+      if (last) {
+        last.events.push(event);
+      }
+      continue;
+    }
+    const last = phases.at(-1);
+    if (last && last.key === key) {
+      last.events.push(event);
+      last.durationMs = animationPhaseDurationMs(key, last.events.length);
+      continue;
+    }
+    phases.push({
+      key,
+      events: [event],
+      durationMs: animationPhaseDurationMs(key, 1),
+      usesSourceView: animationPhaseUsesSourceView(key),
+    });
+  }
+  return phases.filter((phase) => phase.events.some((event) => animationPhaseKey(event)));
+}
+
+function animationPhaseKey(event: ActionTimelineEvent): string | null {
+  const params = event.params as Record<string, unknown> | undefined;
+  const fromArea = Number(params?.fromArea);
+  const toArea = Number(params?.toArea);
+  const playerKey = event.playerIndex ?? 'unknown';
+
+  if (event.kind === 'Play' || event.kind === 'Attach') {
+    return `${event.kind}:${playerKey}`;
+  }
+  if (event.kind === 'MoveCard') {
+    if (fromArea === CabtAreaType.HAND && toArea === CabtAreaType.DECK) {
+      return `HandToDeck:${playerKey}`;
+    }
+    if (fromArea === CabtAreaType.HAND) {
+      return `HandMove:${playerKey}:${toArea}`;
+    }
+    if (fromArea === CabtAreaType.DECK && toArea === CabtAreaType.DISCARD) {
+      return `DeckDiscard:${playerKey}`;
+    }
+  }
+  if (event.kind === 'Shuffle') {
+    return `Shuffle:${playerKey}`;
+  }
+  if (event.kind === 'Draw' || event.kind === 'DrawReverse') {
+    return `Draw:${playerKey}`;
+  }
+  return null;
+}
+
+function animationPhaseUsesSourceView(key: string): boolean {
+  return key.startsWith('HandToDeck:');
+}
+
+function animationPhaseDurationMs(key: string, count: number): number {
+  const durationMs = animationPhaseCardDurationMs(key);
+  const stepMs = animationPhaseStepMs(key);
+  return count <= 0 ? 0 : durationMs + Math.max(0, count - 1) * stepMs;
+}
+
+function animationPhaseCardDurationMs(key: string): number {
+  if (key.startsWith('Shuffle:')) {
+    return actionAnimationTiming.deckShuffleMs;
+  }
+  if (key.startsWith('Draw:')) {
+    return actionAnimationTiming.deckDrawMs;
+  }
+  if (key.startsWith('DeckDiscard:')) {
+    return actionAnimationTiming.deckDiscardMs;
+  }
+  return actionAnimationTiming.handMoveMs;
+}
+
+function animationPhaseStepMs(key: string): number {
+  if (key.startsWith('Draw:')) {
+    return actionAnimationTiming.deckDrawStepMs;
+  }
+  if (key.startsWith('DeckDiscard:')) {
+    return actionAnimationTiming.deckDiscardStepMs;
+  }
+  if (key.startsWith('Shuffle:')) {
+    return actionAnimationTiming.deckShuffleMs;
+  }
+  return actionAnimationTiming.handMoveStepMs;
+}
+
+function projectedViewForEvents(baseView: GameView, currentView: GameView, events: ActionTimelineEvent[]): GameView {
+  const view: GameView = {
+    ...currentView,
+    players: currentView.players.map((currentPlayer, playerIndex) => {
+      const basePlayer = baseView.players[playerIndex] ?? currentPlayer;
+      return {
+        ...currentPlayer,
+        hand: [...basePlayer.hand],
+        deckCount: basePlayer.deckCount,
+        prizesLeft: basePlayer.prizesLeft,
+        active: basePlayer.active,
+        bench: basePlayer.bench,
+        discard: basePlayer.discard,
+        playZone: basePlayer.playZone,
+      };
+    }),
+  };
+
+  for (const event of events) {
+    applyReplayEvent(view, currentView, event);
+  }
   return view;
 }
 

@@ -1,16 +1,18 @@
 import type { GameView } from '../lib/game/types';
-import type { ReplaySnapshot, ReplayStep } from '../lib/game/replay';
+import { replayAnimationPhaseGapMs, replayStepPlaybackDelayMs, type ReplaySnapshot, type ReplayStep } from '../lib/game/replay';
 import { cabtReplayToSnapshot } from '../lib/cabt/cabtReplay';
 
 class ReplayStore {
   replay = $state<ReplaySnapshot | null>(null);
   stepIndex = $state(0);
+  animationPhaseIndex = $state(0);
   loading = $state(false);
   error = $state('');
   copiedForkPoint = $state(false);
   isPlaying = $state(false);
 
-  private playbackTimer: ReturnType<typeof setInterval> | null = null;
+  private playbackTimer: ReturnType<typeof setTimeout> | null = null;
+  private animationPhaseTimer: ReturnType<typeof setTimeout> | null = null;
   private readonly playbackDelayMs = 850;
 
   get currentStep(): ReplayStep | null {
@@ -23,9 +25,19 @@ class ReplayStore {
     if (!replay || !step) {
       return null;
     }
+    const phase = step.animationPhases?.[this.animationPhaseIndex];
+    if (phase) {
+      return phase.view;
+    }
     const view = step.displayView ?? replay.views[step.stateIndex] ?? null;
     if (!view || !step.actionTimeline) {
       return view;
+    }
+    if (step.animationPhases?.length) {
+      return {
+        ...view,
+        actionTimeline: [],
+      };
     }
     return {
       ...view,
@@ -42,16 +54,20 @@ class ReplayStore {
       return;
     }
     this.pause();
+    this.clearAnimationPhaseTimer();
     this.loading = true;
     this.error = '';
     this.copiedForkPoint = false;
     try {
       this.replay = await loadCabtReplay(id);
       this.stepIndex = 0;
+      this.animationPhaseIndex = 0;
+      this.scheduleAnimationPhase();
     } catch (error) {
       this.error = error instanceof Error ? error.message : String(error);
       this.replay = null;
       this.stepIndex = 0;
+      this.animationPhaseIndex = 0;
     } finally {
       this.loading = false;
     }
@@ -59,8 +75,10 @@ class ReplayStore {
 
   clear(): void {
     this.pause();
+    this.clearAnimationPhaseTimer();
     this.replay = null;
     this.stepIndex = 0;
+    this.animationPhaseIndex = 0;
     this.loading = false;
     this.error = '';
     this.copiedForkPoint = false;
@@ -68,9 +86,15 @@ class ReplayStore {
 
   setStep(index: number): void {
     this.stepIndex = clampIndex(index, this.maxStepIndex);
+    this.animationPhaseIndex = 0;
     this.copiedForkPoint = false;
+    this.scheduleAnimationPhase();
     if (this.stepIndex >= this.maxStepIndex) {
       this.pause();
+      return;
+    }
+    if (this.isPlaying) {
+      this.schedulePlaybackStep();
     }
   }
 
@@ -96,16 +120,12 @@ class ReplayStore {
     }
     if (this.stepIndex >= this.maxStepIndex) {
       this.stepIndex = 0;
+      this.animationPhaseIndex = 0;
+      this.scheduleAnimationPhase();
     }
     this.clearPlaybackTimer();
     this.isPlaying = true;
-    this.playbackTimer = setInterval(() => {
-      if (this.stepIndex >= this.maxStepIndex) {
-        this.pause();
-        return;
-      }
-      this.nextStep();
-    }, this.playbackDelayMs);
+    this.schedulePlaybackStep();
   }
 
   pause(): void {
@@ -163,8 +183,41 @@ class ReplayStore {
 
   private clearPlaybackTimer(): void {
     if (this.playbackTimer) {
-      clearInterval(this.playbackTimer);
+      clearTimeout(this.playbackTimer);
       this.playbackTimer = null;
+    }
+  }
+
+  private schedulePlaybackStep(): void {
+    this.clearPlaybackTimer();
+    if (!this.isPlaying) {
+      return;
+    }
+    this.playbackTimer = setTimeout(() => {
+      if (this.stepIndex >= this.maxStepIndex) {
+        this.pause();
+        return;
+      }
+      this.nextStep();
+    }, replayStepPlaybackDelayMs(this.currentStep, this.playbackDelayMs));
+  }
+
+  private scheduleAnimationPhase(): void {
+    this.clearAnimationPhaseTimer();
+    const phase = this.currentStep?.animationPhases?.[this.animationPhaseIndex];
+    if (!phase) {
+      return;
+    }
+    this.animationPhaseTimer = setTimeout(() => {
+      this.animationPhaseIndex += 1;
+      this.scheduleAnimationPhase();
+    }, phase.durationMs + replayAnimationPhaseGapMs);
+  }
+
+  private clearAnimationPhaseTimer(): void {
+    if (this.animationPhaseTimer) {
+      clearTimeout(this.animationPhaseTimer);
+      this.animationPhaseTimer = null;
     }
   }
 }
