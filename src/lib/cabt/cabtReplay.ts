@@ -601,9 +601,10 @@ function replayStepForFrame({
   displayView?: ReplayStep['displayView'];
   animationPhases?: ReplayStep['animationPhases'];
 }): ReplayStep {
+  const stepLabel = persistentActionLabel(label, actionTimeline);
   return {
     index: 0,
-    label,
+    label: stepLabel,
     stateIndex,
     actionIndex: null,
     sequence: stateIndex,
@@ -616,6 +617,100 @@ function replayStepForFrame({
     displayView,
     animationPhases,
   };
+}
+
+function persistentActionLabel(label: string, events: ReplayStep['actionTimeline']): string {
+  if (!events || events.length < 2) {
+    return label;
+  }
+  const playEvent = events.find((event) => event.kind === 'Play');
+  if (!playEvent) {
+    return label;
+  }
+  const phases = animationEventPhases(events);
+  const hasEffectPhase = phases.some((phase) =>
+    phase.key.startsWith('HandToDeck:')
+    || phase.key.startsWith('DeckDiscard:')
+    || phase.key.startsWith('DeckReveal:')
+    || phase.key.startsWith('DeckSearchReveal:')
+    || phase.key.startsWith('DeckRevealReturn:')
+    || phase.key.startsWith('Draw:')
+  );
+  if (!hasEffectPhase) {
+    return label;
+  }
+
+  const playerIndex = playEvent.playerIndex;
+  const actor = playerLabel(playerIndex);
+  const playedCard = eventCardName(playEvent);
+  const clauses = [`played ${playedCard}`];
+  let handToDeckWasSummarized = false;
+
+  for (const phase of phases) {
+    if (phase.key.startsWith('Play:')) {
+      continue;
+    }
+    const count = phase.events.filter((event) => animationPhaseKey(event) === phase.key).length;
+    if (phase.key.startsWith('HandToDeck:')) {
+      clauses.push(`shuffled ${count} ${plural(count, 'card')} from hand into their deck`);
+      handToDeckWasSummarized = true;
+      continue;
+    }
+    if (phase.key.startsWith('Draw:')) {
+      clauses.push(`drew ${count} ${plural(count, 'card')}`);
+      continue;
+    }
+    if (phase.key.startsWith('DeckSearchReveal:')) {
+      clauses.push(count === 1
+        ? 'revealed a card from their deck and put it into their hand'
+        : `revealed ${count} cards from their deck and put them into their hand`);
+      continue;
+    }
+    if (phase.key.startsWith('DeckRevealReturn:')) {
+      clauses.push(`returned ${count} revealed ${plural(count, 'card')} to their deck`);
+      continue;
+    }
+    if (phase.key.startsWith('DeckReveal:')) {
+      clauses.push(`revealed the top ${count} ${plural(count, 'card')} of their deck`);
+      continue;
+    }
+    if (phase.key.startsWith('DeckDiscard:')) {
+      clauses.push(`discarded ${count} ${plural(count, 'card')} from their deck`);
+      continue;
+    }
+    if (phase.key.startsWith('Attach:')) {
+      clauses.push(...phase.events
+        .filter((event) => animationPhaseKey(event) === phase.key)
+        .map((event) => eventMessageWithoutActor(event, actor)));
+      continue;
+    }
+    if (phase.key.startsWith('Shuffle:') && !handToDeckWasSummarized) {
+      clauses.push('shuffled their deck');
+    }
+  }
+
+  return `${actor} ${joinClauses(clauses)}.`;
+}
+
+function eventCardName(event: ActionTimelineEvent): string {
+  const params = event.params as Record<string, unknown> | undefined;
+  return cardName(Number(params?.cardId));
+}
+
+function eventMessageWithoutActor(event: ActionTimelineEvent, actor: string): string {
+  const text = event.message.replace(/\.$/, '');
+  const withoutActor = text.startsWith(`${actor} `) ? text.slice(actor.length + 1) : text;
+  return withoutActor.charAt(0).toLowerCase() + withoutActor.slice(1);
+}
+
+function joinClauses(clauses: string[]): string {
+  if (clauses.length <= 1) {
+    return clauses[0] ?? '';
+  }
+  if (clauses.length === 2) {
+    return `${clauses[0]} and ${clauses[1]}`;
+  }
+  return `${clauses.slice(0, -1).join(', ')}, and ${clauses.at(-1)}`;
 }
 
 function groupedStepDisplayView(
@@ -674,7 +769,7 @@ function groupedStepAnimationPhases(
     return undefined;
   }
   const eventPhases = animationEventPhases(group.events);
-  if (eventPhases.length <= 1) {
+  if (eventPhases.length <= 1 && !eventPhases.some(animationPhaseNeedsDedicatedView)) {
     return undefined;
   }
 
@@ -682,7 +777,7 @@ function groupedStepAnimationPhases(
   const phases: ReplayAnimationPhase[] = [];
   for (const phase of eventPhases) {
     const phaseView = phase.usesSourceView
-      ? phaseStartView
+      ? animationSourceViewForPhase(phaseStartView, currentView, phase)
       : projectedViewForEvents(phaseStartView, currentView, phase.events);
     phases.push({
       key: phase.key,
@@ -741,7 +836,7 @@ function animationPhaseLabel(phase: AnimationEventPhase): string | undefined {
   const actor = playerLabel(event.playerIndex);
   const cardEventCount = phase.events.filter((candidate) => animationPhaseKey(candidate) === phase.key).length;
 
-  if (phase.key.startsWith('Play:') || phase.key.startsWith('Attach:') || phase.key.startsWith('Shuffle:')) {
+  if (phase.key.startsWith('Play:') || phase.key.startsWith('Attach:') || phase.key.startsWith('Evolve:') || phase.key.startsWith('Shuffle:')) {
     return event.message;
   }
   if (phase.key.startsWith('HandToDeck:')) {
@@ -781,7 +876,7 @@ function animationPhaseKey(event: ActionTimelineEvent): string | null {
   const toArea = Number(params?.toArea);
   const playerKey = event.playerIndex ?? 'unknown';
 
-  if (event.kind === 'Play' || event.kind === 'Attach') {
+  if (event.kind === 'Play' || event.kind === 'Attach' || event.kind === 'Evolve') {
     return `${event.kind}:${playerKey}`;
   }
   if (event.kind === 'MoveCard') {
@@ -814,7 +909,23 @@ function animationPhaseKey(event: ActionTimelineEvent): string | null {
 }
 
 function animationPhaseUsesSourceView(key: string): boolean {
-  return key.startsWith('HandToDeck:');
+  return key.startsWith('HandToDeck:')
+    || key.startsWith('Evolve:');
+}
+
+function animationPhaseNeedsDedicatedView(phase: AnimationEventPhase): boolean {
+  return phase.key.startsWith('Evolve:');
+}
+
+function animationSourceViewForPhase(
+  phaseStartView: GameView,
+  currentView: GameView,
+  phase: AnimationEventPhase,
+): GameView {
+  if (phase.key.startsWith('Evolve:')) {
+    return projectedViewForEvents(phaseStartView, currentView, phase.events, { deferBoardStateEvents: true });
+  }
+  return phaseStartView;
 }
 
 function animationPhaseDurationMs(key: string, count: number): number {
@@ -842,6 +953,9 @@ function animationPhaseCardDurationMs(key: string): number {
   if (key.startsWith('DeckRevealReturn:')) {
     return actionAnimationTiming.deckRevealReturnMs;
   }
+  if (key.startsWith('Evolve:')) {
+    return actionAnimationTiming.evolveMs;
+  }
   return actionAnimationTiming.handMoveMs;
 }
 
@@ -867,7 +981,12 @@ function animationPhaseStepMs(key: string): number {
   return actionAnimationTiming.handMoveStepMs;
 }
 
-function projectedViewForEvents(baseView: GameView, currentView: GameView, events: ActionTimelineEvent[]): GameView {
+function projectedViewForEvents(
+  baseView: GameView,
+  currentView: GameView,
+  events: ActionTimelineEvent[],
+  options: { deferBoardStateEvents?: boolean } = {},
+): GameView {
   const view: GameView = {
     ...currentView,
     players: currentView.players.map((currentPlayer, playerIndex) => {
@@ -886,7 +1005,7 @@ function projectedViewForEvents(baseView: GameView, currentView: GameView, event
   };
 
   for (const event of events) {
-    applyReplayEvent(view, currentView, event);
+    applyReplayEvent(view, currentView, event, options);
   }
   return view;
 }
@@ -980,7 +1099,12 @@ function needsPlayedCardDiscardProjection(currentView: GameView, event: ActionTi
     && !playerHasCardInPlay(player, event);
 }
 
-function applyReplayEvent(view: GameView, currentView: GameView, event: ActionTimelineEvent): void {
+function applyReplayEvent(
+  view: GameView,
+  currentView: GameView,
+  event: ActionTimelineEvent,
+  options: { deferBoardStateEvents?: boolean } = {},
+): void {
   const playerIndex = event.playerIndex;
   if (playerIndex === undefined || !view.players[playerIndex] || !currentView.players[playerIndex]) {
     return;
@@ -1007,7 +1131,20 @@ function applyReplayEvent(view: GameView, currentView: GameView, event: ActionTi
     return;
   }
 
+  if (event.kind === 'Evolve') {
+    player.hand = removeMovedCardFromHand(player.hand, event);
+    if (!options.deferBoardStateEvents) {
+      player.active = currentPlayer.active;
+      player.bench = currentPlayer.bench;
+      player.discard = currentPlayer.discard;
+    }
+    return;
+  }
+
   if (isBoardStateEvent(event.kind)) {
+    if (options.deferBoardStateEvents) {
+      return;
+    }
     player.active = currentPlayer.active;
     player.bench = currentPlayer.bench;
     player.discard = currentPlayer.discard;

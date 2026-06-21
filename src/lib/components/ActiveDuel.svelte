@@ -22,6 +22,7 @@
     canPlaceSetupActive: (slot: PokemonSlotView) => boolean;
     placeSetupActive: () => void;
     showZone: (playerIndex: number, zone: ZoneName, title: string, faceDown?: boolean) => void;
+    slotHasCompletedEvolution?: (slot: PokemonSlotView) => boolean;
   };
 
   let {
@@ -41,6 +42,7 @@
     canPlaceSetupActive,
     placeSetupActive,
     showZone,
+    slotHasCompletedEvolution = () => false,
   }: Props = $props();
 
   function clickActive(slot: PokemonSlotView) {
@@ -64,6 +66,7 @@
     onclick={() => clickActive(topPlayer.active)}
     ondragover={(event) => allowDrop(event, topPlayer.active)}
     ondrop={(event) => dropToSlot(topPlayer.active, event)}
+    evolutionChromeIn={slotHasCompletedEvolution(topPlayer.active)}
   />
 
   {#if currentStadium && currentStadiumOwner?.index === topPlayer.index}
@@ -81,6 +84,7 @@
     onclick={() => clickActive(bottomPlayer.active)}
     ondragover={(event) => allowDrop(event, bottomPlayer.active)}
     ondrop={(event) => dropToSlot(bottomPlayer.active, event)}
+    evolutionChromeIn={slotHasCompletedEvolution(bottomPlayer.active)}
   />
 
   {#if currentStadium && currentStadiumOwner?.index === bottomPlayer.index}

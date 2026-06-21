@@ -1,8 +1,9 @@
 <script lang="ts">
   import { onDestroy, onMount } from 'svelte';
-  import { actionAnimationBatchEvents, actionAnimationStartMs } from '../cabt/actionAnimationSchedule';
+  import { actionAnimationBatchEvents, actionAnimationStartMs, actionAnimationTiming } from '../cabt/actionAnimationSchedule';
   import { cabtCardToView } from '../cabt/cardView';
   import { CabtAreaType } from '../cabt/types';
+  import { replayAnimationPhaseGapMs } from '../game/replay';
   import type { ActionTimelineEvent } from '../game/types';
 
   type Props = {
@@ -27,6 +28,7 @@
 
   type FixedAnimation = {
     kind: 'fixed';
+    mode: 'play' | 'evolve';
     id: number;
     target: HTMLElement;
     delayMs: number;
@@ -61,6 +63,8 @@
 
   const timers: ReturnType<typeof setTimeout>[] = [];
   const cardMoveDurationMs = 360;
+  const evolveMoveDurationMs = 430;
+  const evolveVisibleDurationMs = actionAnimationTiming.evolveMs + replayAnimationPhaseGapMs + 40;
   const cardHeightToWidthRatio = 88 / 63;
   let nextPlayId = 0;
   let seenEventIds = new Set<number>();
@@ -131,7 +135,7 @@
 
   function isHandPlayEvent(event: ActionTimelineEvent): boolean {
     const params = event.params as Record<string, unknown> | undefined;
-    if (event.kind === 'Play' || event.kind === 'Attach') {
+    if (event.kind === 'Play' || event.kind === 'Attach' || event.kind === 'Evolve') {
       return Number.isFinite(Number(params?.cardId));
     }
     return event.kind === 'MoveCard'
@@ -159,18 +163,24 @@
       if (animation.kind === 'fixed') {
         activePlays = [...activePlays, animation];
       }
+      const animationMoveMs = animation.kind === 'fixed' && animation.mode === 'evolve'
+        ? evolveMoveDurationMs
+        : cardMoveDurationMs;
+      const animationVisibleMs = animation.kind === 'fixed' && animation.mode === 'evolve'
+        ? evolveVisibleDurationMs
+        : animationMoveMs;
       const timer = setTimeout(() => {
         if (animation.kind === 'fixed') {
           activePlays = activePlays.filter((play) => play.id !== animation.id);
         }
         deactivateTargets([animation.target]);
-      }, animation.delayMs + cardMoveDurationMs + 24);
+      }, animation.delayMs + animationVisibleMs + 24);
       timers.push(timer);
     }
 
     const timer = setTimeout(() => {
       deactivateTargets(targetAnimations.map((animation) => animation.target));
-    }, Math.max(...targetAnimations.map((animation) => animation.delayMs)) + cardMoveDurationMs + 120);
+    }, Math.max(...targetAnimations.map((animation) => animation.delayMs + animationTotalMs(animation))) + 120);
     timers.push(timer);
   }
 
@@ -220,18 +230,25 @@
 
     const sourceQuad = sourceQuadForHand(handElement, sourceRect);
     const targetQuad = viewportQuad(visualTarget);
+    const startTransform = cssMatrix3dForQuad(sourceRect.width, sourceRect.height, sourceQuad);
+    const endTransform = cssMatrix3dForQuad(sourceRect.width, sourceRect.height, targetQuad);
+    if (!startTransform || !endTransform) {
+      return [];
+    }
+    const isEvolution = event.kind === 'Evolve';
 
     return [{
       kind: 'fixed',
+      mode: isEvolution ? 'evolve' : 'play',
       id: nextPlayId++,
       target,
       delayMs,
       width: sourceRect.width,
       height: sourceRect.height,
-      startTransform: cssMatrix3dForQuad(sourceRect.width, sourceRect.height, sourceQuad),
-      endTransform: cssMatrix3dForQuad(sourceRect.width, sourceRect.height, targetQuad),
+      startTransform,
+      endTransform,
       imageUrl: card.imageUrl ?? '',
-      hideContents: shouldHideTargetContents(event, target),
+      hideContents: isEvolution ? false : shouldHideTargetContents(event, target),
     }];
   }
 
@@ -294,6 +311,12 @@
       animation.target.style.setProperty('--hand-attach-start-rotation', `${animation.startRotation.toFixed(1)}deg`);
       animation.target.style.setProperty('--hand-attach-delay', `${animation.delayMs}ms`);
     }
+    if (animation.kind === 'fixed' && animation.mode === 'evolve') {
+      animation.target.dataset.handEvolveAnimationActive = 'true';
+      animation.target.style.setProperty('--hand-evolve-delay', `${animation.delayMs}ms`);
+      animation.target.style.setProperty('--hand-evolve-move-ms', `${evolveMoveDurationMs}ms`);
+      animation.target.style.setProperty('--hand-evolve-visible-ms', `${evolveVisibleDurationMs}ms`);
+    }
     if (animation.hideContents) {
       animation.target.dataset.handPlayAnimationHideContents = 'true';
     }
@@ -313,13 +336,24 @@
       delete target.dataset.handPlayAnimationActive;
       delete target.dataset.handPlayAnimationHideContents;
       delete target.dataset.handAttachAnimationActive;
+      delete target.dataset.handEvolveAnimationActive;
       target.style.removeProperty('--hand-attach-card-image');
       target.style.removeProperty('--hand-attach-start-x');
       target.style.removeProperty('--hand-attach-start-y');
       target.style.removeProperty('--hand-attach-start-rotation');
       target.style.removeProperty('--hand-attach-delay');
+      target.style.removeProperty('--hand-evolve-delay');
+      target.style.removeProperty('--hand-evolve-move-ms');
+      target.style.removeProperty('--hand-evolve-visible-ms');
     }
     activeTargets = [...nextActiveTargets];
+  }
+
+  function animationTotalMs(animation: TargetAnimation): number {
+    if (animation.kind === 'fixed' && animation.mode === 'evolve') {
+      return evolveVisibleDurationMs;
+    }
+    return cardMoveDurationMs;
   }
 
   function targetForEvent(event: ActionTimelineEvent): HTMLElement | null {
@@ -332,6 +366,13 @@
       const targetSerial = Number(params?.serialTarget);
       const targetCardId = Number(params?.cardIdTarget);
       return boardSlotByPokemonIdentity(targetSerial, targetCardId, playerIndex);
+    }
+
+    if (event.kind === 'Evolve') {
+      const targetSerial = Number(params?.serialTarget);
+      const targetCardId = Number(params?.cardIdTarget);
+      return boardSlotByPokemonIdentity(targetSerial, targetCardId, playerIndex)
+        ?? boardSlotByPokemonIdentity(serial, cardId, playerIndex);
     }
 
     if (Number.isFinite(serial)) {
@@ -589,7 +630,16 @@
     return points;
   }
 
-  function cssMatrix3dForQuad(width: number, height: number, quad: Point[]): string {
+  function cssMatrix3dForQuad(width: number, height: number, quad: Point[]): string | null {
+    if (
+      width <= 0
+      || height <= 0
+      || quad.length !== 4
+      || quad.some((point) => !Number.isFinite(point.x) || !Number.isFinite(point.y))
+    ) {
+      return null;
+    }
+
     const homography = solveHomography(
       [
         { x: 0, y: 0 },
@@ -600,8 +650,8 @@
       quad,
     );
 
-    if (!homography) {
-      return 'matrix3d(1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1)';
+    if (!homography || homography.some((value) => !Number.isFinite(value))) {
+      return null;
     }
 
     return [
@@ -699,11 +749,14 @@
     {#each activePlays as play (play.id)}
       <div
         class="hand-play-card"
-        style={`width: ${play.width.toFixed(1)}px; height: ${play.height.toFixed(1)}px; --hand-play-start-transform: ${play.startTransform}; --hand-play-end-transform: ${play.endTransform}; --hand-play-delay: ${play.delayMs}ms;`}
+        class:evolving={play.mode === 'evolve'}
+        style={`width: ${play.width.toFixed(1)}px; height: ${play.height.toFixed(1)}px; --hand-play-start-transform: ${play.startTransform}; --hand-play-end-transform: ${play.endTransform}; --hand-play-delay: ${play.delayMs}ms; --hand-play-duration: ${play.mode === 'evolve' ? evolveMoveDurationMs : cardMoveDurationMs}ms; --hand-evolve-visible-duration: ${evolveVisibleDurationMs}ms;`}
       >
-        {#if play.imageUrl}
-          <img src={play.imageUrl} alt="" draggable="false" />
-        {/if}
+        <div class="hand-play-card-body">
+          {#if play.imageUrl}
+            <img src={play.imageUrl} alt="" draggable="false" />
+          {/if}
+        </div>
       </div>
     {/each}
   </div>
@@ -724,6 +777,38 @@
 
   :global([data-hand-attach-animation-active='true']) {
     isolation: isolate;
+  }
+
+  :global([data-hand-evolve-animation-active='true']) {
+    isolation: isolate;
+  }
+
+  :global([data-hand-evolve-animation-active='true'] > .pokemon-status),
+  :global([data-hand-evolve-animation-active='true'] > .energy-badges),
+  :global([data-hand-evolve-animation-active='true'] > .tool-card-preview),
+  :global([data-hand-evolve-animation-active='true'] > .slot-badges),
+  :global([data-hand-evolve-animation-active='true'] > .prompt-damage-badge) {
+    animation: hand-evolve-slot-chrome-out 170ms ease var(--hand-evolve-delay) both;
+  }
+
+  :global([data-hand-evolve-animation-active='true']::after) {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 8;
+    display: block;
+    border-radius: inherit;
+    pointer-events: none;
+    opacity: 0;
+    background:
+      radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.56) 0 16%, rgba(89, 198, 255, 0.28) 44%, rgba(20, 184, 166, 0) 74%);
+    box-shadow:
+      0 0 0 1px rgba(255, 255, 255, 0.76),
+      0 0 18px rgba(59, 130, 246, 0.34),
+      0 0 30px rgba(20, 184, 166, 0.2);
+    transform: scale(0.84);
+    animation: hand-evolve-slot-glow var(--hand-evolve-visible-ms) cubic-bezier(0.18, 0.86, 0.24, 1) var(--hand-evolve-delay) both;
+    will-change: transform, opacity, box-shadow;
   }
 
   :global([data-hand-attach-animation-active='true']::before) {
@@ -763,17 +848,26 @@
     left: 0;
     z-index: 20;
     display: block;
-    overflow: hidden;
+    overflow: visible;
     border-radius: 5px;
     pointer-events: none;
+    transform-origin: 0 0;
+    animation: hand-play-travel var(--hand-play-duration) cubic-bezier(0.22, 0.61, 0.36, 1) var(--hand-play-delay) both;
+    backface-visibility: hidden;
+    will-change: transform, opacity;
+  }
+
+  .hand-play-card-body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    border-radius: inherit;
     background: #f7f8fa;
     box-shadow:
       0 12px 26px rgba(23, 30, 38, 0.24),
       0 0 0 1px rgba(18, 21, 26, 0.18);
-    transform-origin: 0 0;
-    animation: hand-play-travel 360ms cubic-bezier(0.22, 0.61, 0.36, 1) var(--hand-play-delay) both;
-    backface-visibility: hidden;
-    will-change: transform, opacity;
+    transform-origin: center;
+    will-change: transform, filter, box-shadow;
   }
 
   .hand-play-card img {
@@ -783,6 +877,14 @@
     object-fit: fill;
     pointer-events: none;
     -webkit-user-drag: none;
+  }
+
+  .hand-play-card.evolving .hand-play-card-body {
+    animation: hand-evolve-card-flair var(--hand-evolve-visible-duration) cubic-bezier(0.18, 0.86, 0.24, 1) var(--hand-play-delay) both;
+    box-shadow:
+      0 16px 34px rgba(23, 30, 38, 0.28),
+      0 0 0 1px rgba(255, 255, 255, 0.68),
+      0 0 24px rgba(59, 130, 246, 0.34);
   }
 
   @keyframes hand-play-travel {
@@ -824,9 +926,84 @@
     }
   }
 
+  @keyframes hand-evolve-card-flair {
+    0% {
+      transform: scale(1);
+      filter: brightness(1) saturate(1);
+      box-shadow:
+        0 16px 34px rgba(23, 30, 38, 0.28),
+        0 0 0 1px rgba(255, 255, 255, 0.68),
+        0 0 24px rgba(59, 130, 246, 0.34);
+    }
+    18% {
+      transform: scale(1.035);
+      filter: brightness(1.04) saturate(1.04);
+    }
+    42% {
+      transform: scale(1.09);
+      filter: brightness(1.13) saturate(1.12);
+      box-shadow:
+        0 20px 40px rgba(23, 30, 38, 0.3),
+        0 0 0 1px rgba(255, 255, 255, 0.78),
+        0 0 30px rgba(59, 130, 246, 0.42),
+        0 0 44px rgba(20, 184, 166, 0.22);
+    }
+    58% {
+      transform: scale(1.025);
+      filter: brightness(1.05) saturate(1.06);
+    }
+    100% {
+      transform: scale(1);
+      filter: brightness(1) saturate(1);
+      box-shadow:
+        0 16px 34px rgba(23, 30, 38, 0.28),
+        0 0 0 1px rgba(255, 255, 255, 0.68),
+        0 0 24px rgba(59, 130, 246, 0.34);
+    }
+  }
+
+  @keyframes hand-evolve-slot-chrome-out {
+    0% {
+      opacity: 1;
+    }
+    100% {
+      opacity: 0;
+    }
+  }
+
+  @keyframes hand-evolve-slot-glow {
+    0% {
+      opacity: 0;
+      transform: scale(0.84);
+      filter: saturate(1);
+    }
+    52% {
+      opacity: 0.96;
+      transform: scale(1.1);
+      filter: saturate(1.18);
+    }
+    76% {
+      opacity: 0.5;
+      transform: scale(1.16);
+      filter: saturate(1.08);
+    }
+    100% {
+      opacity: 0;
+      transform: scale(1.2);
+      filter: saturate(1);
+    }
+  }
+
   @media (prefers-reduced-motion: reduce) {
     .hand-play-card,
-    :global([data-hand-attach-animation-active='true']::before) {
+    .hand-play-card.evolving .hand-play-card-body,
+    :global([data-hand-attach-animation-active='true']::before),
+    :global([data-hand-evolve-animation-active='true'] > .pokemon-status),
+    :global([data-hand-evolve-animation-active='true'] > .energy-badges),
+    :global([data-hand-evolve-animation-active='true'] > .tool-card-preview),
+    :global([data-hand-evolve-animation-active='true'] > .slot-badges),
+    :global([data-hand-evolve-animation-active='true'] > .prompt-damage-badge),
+    :global([data-hand-evolve-animation-active='true']::after) {
       animation: none;
     }
   }

@@ -59,6 +59,7 @@
     targetFor,
     type CardTarget,
     type CardView,
+    type ActionTimelineEvent,
     type GameView,
     type PlayerView,
     type PokemonSlotView,
@@ -114,6 +115,7 @@
   let animationScopeKey = $derived(replayMode
     ? `replay-${replayStore.stepIndex}-${replayStore.animationPhaseIndex}`
     : `live-${game?.actionTimeline?.at(-1)?.id ?? 0}`);
+  let finalEvolutionEvents = $derived(replayMode ? replayFinalEvolutionEvents() : []);
   let error = $derived(homeMode === 'logs' ? replayStore.error : gameStore.error);
   let busy = $derived(replayMode ? replayStore.loading : gameStore.busy);
   let sessionBusy = $derived(replayMode ? replayStore.loading : busy);
@@ -254,6 +256,18 @@
   let boardStrategy = $derived<BoardInteractionStrategy | null>(
     game && currentPrompt ? createBoardStrategy(game, currentPrompt) : null,
   );
+
+  function replayFinalEvolutionEvents(): ActionTimelineEvent[] {
+    const step = replayStore.currentStep;
+    const phases = step?.animationPhases ?? [];
+    if (!step || replayStore.animationPhaseIndex < phases.length) {
+      return [];
+    }
+    if (!phases.some((phase) => phase.key.startsWith('Evolve:'))) {
+      return [];
+    }
+    return step.actionTimeline?.filter((event) => event.kind === 'Evolve') ?? [];
+  }
   $effect(() => {
     if (!boardStrategy || !game) {
       return;
@@ -1292,6 +1306,7 @@
           {boardLift}
           animationEvents={game.actionTimeline ?? []}
           {animationScopeKey}
+          evolutionChromeEvents={finalEvolutionEvents}
           {replayMode}
         />
 

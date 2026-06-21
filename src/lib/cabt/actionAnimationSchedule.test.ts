@@ -47,6 +47,16 @@ describe('actionAnimationStartMs', () => {
     expect(actionAnimationStartMs(events, events[2])).toBe(0);
   });
 
+  it('gives evolution its own animation duration before follow-up effects', () => {
+    const events: ActionTimelineEvent[] = [
+      event(1, 'Evolve', { cardId: 723, serial: 13 }),
+      event(2, 'Shuffle', {}),
+    ];
+
+    expect(actionAnimationStartMs(events, events[0])).toBe(0);
+    expect(actionAnimationStartMs(events, events[1])).toBe(actionAnimationTiming.evolveMs);
+  });
+
   it('sequences deck reveal cards after a played supporter', () => {
     const events: ActionTimelineEvent[] = [
       event(1, 'Play', { cardId: 1235, serial: 26 }),

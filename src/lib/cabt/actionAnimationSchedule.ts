@@ -13,6 +13,7 @@ export const actionAnimationTiming = {
   deckRevealStepMs: 45,
   deckRevealReturnMs: 420,
   deckRevealReturnStepMs: 35,
+  evolveMs: 680,
 } as const;
 
 export function actionAnimationBatchEvents(
@@ -75,10 +76,10 @@ function animationPhaseForEvent(event: ActionTimelineEvent): AnimationPhase | nu
   const fromArea = Number(params?.fromArea);
   const toArea = Number(params?.toArea);
 
-  if (event.kind === 'Play' || event.kind === 'Attach') {
+  if (event.kind === 'Play' || event.kind === 'Attach' || event.kind === 'Evolve') {
     return {
       key: `${event.kind}:${playerKey}`,
-      durationMs: actionAnimationTiming.handMoveMs,
+      durationMs: event.kind === 'Evolve' ? actionAnimationTiming.evolveMs : actionAnimationTiming.handMoveMs,
       stepMs: actionAnimationTiming.handMoveStepMs,
     };
   }

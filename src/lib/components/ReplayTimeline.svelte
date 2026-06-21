@@ -172,7 +172,7 @@
     position: absolute;
     left: 50%;
     bottom: calc(100% + 7px);
-    width: min(520px, calc(100% - 44px));
+    width: min(920px, calc(100% - 44px));
     transform: translateX(-50%);
     display: flex;
     justify-content: center;
@@ -342,7 +342,7 @@
     }
 
     .replay-caption {
-      width: min(420px, calc(100% - 20px));
+      width: min(640px, calc(100% - 20px));
       bottom: calc(100% + 5px);
     }
 

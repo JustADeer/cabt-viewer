@@ -11,6 +11,7 @@
     promptSelected?: boolean;
     slotDelta?: number;
     placement?: '' | 'top-active-slot' | 'bottom-active-slot';
+    evolutionChromeIn?: boolean;
     onclick?: (event: MouseEvent) => void;
     ondragover?: (event: DragEvent) => void;
     ondrop?: (event: DragEvent) => void;
@@ -24,6 +25,7 @@
     promptSelected = false,
     slotDelta = 0,
     placement = '',
+    evolutionChromeIn = false,
     onclick,
     ondragover,
     ondrop,
@@ -77,6 +79,7 @@
   class:can-drop={canDrop}
   class:prompt-selectable={promptSelectable}
   class:prompt-selected={promptSelected}
+  class:evolution-chrome-in={evolutionChromeIn}
   class={`board-slot ${placement}`}
   data-testid={`slot-${slot.ownerIndex}-${slot.slot}-${slot.index}`}
   data-card-anchor={`player:${slot.ownerIndex}:${slot.slot}:${slot.index}`}
@@ -208,6 +211,14 @@
   .board-slot > :global(.card-tile) {
     width: 100%;
     height: 100%;
+  }
+
+  .board-slot.evolution-chrome-in > .pokemon-status,
+  .board-slot.evolution-chrome-in > .energy-badges,
+  .board-slot.evolution-chrome-in > .tool-card-preview,
+  .board-slot.evolution-chrome-in > .slot-badges,
+  .board-slot.evolution-chrome-in > .prompt-damage-badge {
+    animation: board-slot-evolution-chrome-in 190ms ease-out both;
   }
 
   .prompt-damage-badge {
@@ -425,6 +436,15 @@
     100% {
       opacity: 1;
       transform: scale(1);
+    }
+  }
+
+  @keyframes board-slot-evolution-chrome-in {
+    0% {
+      opacity: 0;
+    }
+    100% {
+      opacity: 1;
     }
   }
 </style>

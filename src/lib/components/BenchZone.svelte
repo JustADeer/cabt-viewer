@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { flip } from 'svelte/animate';
   import BoardSlot from './BoardSlot.svelte';
   import type { PlayerView, PokemonSlotView } from '../game/types';
 
@@ -21,6 +22,7 @@
     clickSlot: (slot: PokemonSlotView) => void;
     allowDrop: (event: DragEvent, slot: PokemonSlotView) => void;
     dropToSlot: (slot: PokemonSlotView, event: DragEvent) => void;
+    slotHasCompletedEvolution?: (slot: PokemonSlotView) => boolean;
   };
 
   let {
@@ -42,9 +44,14 @@
     clickSlot,
     allowDrop,
     dropToSlot,
+    slotHasCompletedEvolution = () => false,
   }: Props = $props();
 
   let canDropToBench = $derived(canPlayToBenchArea(player) || canPlaceSetupBench(player));
+  let benchEntries = $derived(slots.map((slot) => ({
+    slot,
+    key: benchSlotKey(slot),
+  })));
 
   function playToBench() {
     if (canPlaceSetupBench(player)) {
@@ -54,6 +61,13 @@
     if (canPlayToBenchArea(player)) {
       playToBenchArea(player);
     }
+  }
+
+  function benchSlotKey(slot: PokemonSlotView) {
+    const rootPokemon = slot.cards.at(-1) ?? slot.pokemon;
+    return rootPokemon?.serial !== undefined
+      ? `pokemon:${rootPokemon.serial}`
+      : `slot:${slot.ownerIndex}:${slot.slot}:${slot.index}`;
   }
 </script>
 
@@ -71,17 +85,21 @@
     ondrop={(event) => dropToBenchArea(player, event)}
   ></button>
   <div class="bench-row" class:opponent>
-    {#each slots as slot}
-      <BoardSlot
-        {slot}
-        canDrop={isPlayableTarget(slot)}
-        promptSelectable={isBoardPromptSelectable(slot)}
-        promptSelected={isBoardPromptSelected(slot)}
-        slotDelta={boardSlotDelta(slot)}
-        onclick={() => clickSlot(slot)}
-        ondragover={(event) => allowDrop(event, slot)}
-        ondrop={(event) => dropToSlot(slot, event)}
-      />
+    {#each benchEntries as entry (entry.key)}
+      {@const slot = entry.slot}
+      <div class="bench-slot-frame" animate:flip={{ duration: 180 }}>
+        <BoardSlot
+          {slot}
+          canDrop={isPlayableTarget(slot)}
+          promptSelectable={isBoardPromptSelectable(slot)}
+          promptSelected={isBoardPromptSelected(slot)}
+          slotDelta={boardSlotDelta(slot)}
+          onclick={() => clickSlot(slot)}
+          ondragover={(event) => allowDrop(event, slot)}
+          ondrop={(event) => dropToSlot(slot, event)}
+          evolutionChromeIn={slotHasCompletedEvolution(slot)}
+        />
+      </div>
     {/each}
   </div>
 </div>
@@ -166,10 +184,14 @@
     pointer-events: none;
   }
 
+  .bench-slot-frame {
+    width: var(--bench-card-w);
+    pointer-events: auto;
+  }
+
   .bench-row :global(.board-slot) {
     --slot-card-w: var(--bench-card-w);
     width: var(--bench-card-w);
-    pointer-events: auto;
   }
 
   .bench-row.opponent :global(.card-tile) {

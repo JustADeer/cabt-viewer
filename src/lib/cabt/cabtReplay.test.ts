@@ -412,6 +412,150 @@ describe('cabtReplayToSnapshot', () => {
     expect(snapshot.views[snapshot.steps[3].stateIndex].players[0].discard.map((card) => card.serial)).toEqual([14]);
   });
 
+  it('holds the pre-evolution board state while an evolution animation resolves', () => {
+    const snapshot = cabtReplayToSnapshot({
+      visualize: [{
+        current: {
+          turn: 1,
+          yourIndex: 0,
+          result: -1,
+          players: [{
+            active: [{ id: 722, serial: 6, hp: 90, maxHp: 90 }],
+            bench: [],
+            benchMax: 5,
+            hand: [
+              { id: 723, serial: 13 },
+              { id: 3, serial: 46 },
+            ],
+            deckCount: 46,
+            discard: [],
+            prize: [],
+          }, {
+            active: [],
+            bench: [],
+            benchMax: 5,
+            handCount: 0,
+            deckCount: 53,
+            prize: [],
+          }],
+        },
+      }, {
+        logs: [
+          { type: 'Evolve', playerIndex: 0, cardId: 723, serial: 13, cardIdTarget: 722, serialTarget: 6 },
+          { type: 'HpChange', playerIndex: 0, cardId: 723, serial: 13, value: -30 },
+        ],
+        current: {
+          turn: 1,
+          yourIndex: 0,
+          result: -1,
+          players: [{
+            active: [{
+              id: 723,
+              serial: 13,
+              hp: 320,
+              maxHp: 350,
+              preEvolution: [{ id: 722, serial: 6 }],
+            }],
+            bench: [],
+            benchMax: 5,
+            hand: [
+              { id: 3, serial: 46 },
+            ],
+            deckCount: 46,
+            discard: [],
+            prize: [],
+          }, {
+            active: [],
+            bench: [],
+            benchMax: 5,
+            handCount: 0,
+            deckCount: 53,
+            prize: [],
+          }],
+        },
+      }],
+    });
+
+    const evolveStep = snapshot.steps[1];
+    expect(evolveStep.label).toBe('Player 1 evolved into Mega Abomasnow ex.');
+    expect(evolveStep.animationPhases?.map((phase) => phase.key)).toEqual(['Evolve:0']);
+    expect(evolveStep.animationPhases?.[0].view.players[0].active.pokemon?.id).toBe(722);
+    expect(evolveStep.animationPhases?.[0].view.players[0].active.damage).toBe(0);
+    expect(evolveStep.animationPhases?.[0].view.players[0].hand.map((card) => card.serial)).toEqual([46]);
+    expect(snapshot.views[evolveStep.stateIndex].players[0].active.pokemon?.id).toBe(723);
+    expect(snapshot.views[evolveStep.stateIndex].players[0].active.damage).toBe(30);
+  });
+
+  it('holds a pre-evolution bench slot while a bench evolution animation resolves', () => {
+    const snapshot = cabtReplayToSnapshot({
+      visualize: [{
+        current: {
+          turn: 1,
+          yourIndex: 0,
+          result: -1,
+          players: [{
+            active: [],
+            bench: [{ id: 722, serial: 6, hp: 90, maxHp: 90 }],
+            benchMax: 5,
+            hand: [
+              { id: 723, serial: 13 },
+              { id: 3, serial: 46 },
+            ],
+            deckCount: 46,
+            discard: [],
+            prize: [],
+          }, {
+            active: [],
+            bench: [],
+            benchMax: 5,
+            handCount: 0,
+            deckCount: 53,
+            prize: [],
+          }],
+        },
+      }, {
+        logs: [
+          { type: 'Evolve', playerIndex: 0, cardId: 723, serial: 13, cardIdTarget: 722, serialTarget: 6 },
+        ],
+        current: {
+          turn: 1,
+          yourIndex: 0,
+          result: -1,
+          players: [{
+            active: [],
+            bench: [{
+              id: 723,
+              serial: 13,
+              hp: 350,
+              maxHp: 350,
+              preEvolution: [{ id: 722, serial: 6 }],
+            }],
+            benchMax: 5,
+            hand: [
+              { id: 3, serial: 46 },
+            ],
+            deckCount: 46,
+            discard: [],
+            prize: [],
+          }, {
+            active: [],
+            bench: [],
+            benchMax: 5,
+            handCount: 0,
+            deckCount: 53,
+            prize: [],
+          }],
+        },
+      }],
+    });
+
+    const evolveStep = snapshot.steps[1];
+    expect(evolveStep.animationPhases?.[0].view.players[0].bench[0].pokemon?.id).toBe(722);
+    expect(evolveStep.animationPhases?.[0].view.players[0].hand.map((card) => card.serial)).toEqual([46]);
+    expect(snapshot.views[evolveStep.stateIndex].players[0].bench[0].pokemon?.id).toBe(723);
+    expect(snapshot.views[evolveStep.stateIndex].players[0].bench[0].cards.map((card) => card.serial)).toEqual([13, 6]);
+  });
+
   it('coalesces searched deck cards and shuffle into the played card step', () => {
     const snapshot = cabtReplayToSnapshot({
       visualize: [{
@@ -532,7 +676,7 @@ describe('cabtReplayToSnapshot', () => {
 
     expect(snapshot.steps).toHaveLength(2);
     const step = snapshot.steps[1];
-    expect(step.label).toBe('Player 1 played Mega Signal.');
+    expect(step.label).toBe('Player 1 played Mega Signal, revealed a card from their deck and put it into their hand, and shuffled their deck.');
     expect(step.stateIndex).toBe(3);
     expect(step.actionTimeline?.map((event) => event.kind)).toEqual([
       'Play',
@@ -919,6 +1063,7 @@ describe('cabtReplayToSnapshot', () => {
     });
 
     const step = snapshot.steps[1];
+    expect(step.label).toBe("Player 1 played Lillie's Determination, shuffled 5 cards from hand into their deck, and drew 4 cards.");
     expect(step.animationPhases?.map((phase) => phase.key.replace(/:\d+$/, ''))).toEqual([
       'Play',
       'HandToDeck',
@@ -1154,7 +1299,7 @@ describe('cabtReplayToSnapshot', () => {
 
     expect(snapshot.steps).toHaveLength(2);
     const step = snapshot.steps[1];
-    expect(step.label).toBe('Player 1 played Waitress.');
+    expect(step.label).toBe('Player 1 played Waitress, revealed the top 3 cards of their deck, attached Basic Water Energy to Snover, returned 2 revealed cards to their deck, and shuffled their deck.');
     expect(step.stateIndex).toBe(3);
     expect(step.actionTimeline?.map((event) => event.kind)).toEqual([
       'Play',

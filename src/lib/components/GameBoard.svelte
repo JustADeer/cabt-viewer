@@ -42,6 +42,7 @@
     boardLift?: number;
     animationEvents?: ActionTimelineEvent[];
     animationScopeKey?: string | number;
+    evolutionChromeEvents?: ActionTimelineEvent[];
     replayMode?: boolean;
   };
 
@@ -80,6 +81,7 @@
     boardLift = 0,
     animationEvents = [],
     animationScopeKey = '',
+    evolutionChromeEvents = [],
     replayMode = false,
   }: Props = $props();
 
@@ -158,6 +160,16 @@
   function showDiscard(player: PlayerView) {
     showZone(player.index, 'discard', `${player.name} discard`);
   }
+
+  function slotHasCompletedEvolution(slot: PokemonSlotView) {
+    return evolutionChromeEvents.some((event) => {
+      const params = event.params as Record<string, unknown> | undefined;
+      const serial = Number(params?.serial);
+      const cardId = Number(params?.cardId);
+      return (Number.isFinite(serial) && slot.pokemon?.serial === serial)
+        || (Number.isFinite(cardId) && slot.pokemon?.id === cardId);
+    });
+  }
 </script>
 
 <section
@@ -198,6 +210,7 @@
       {clickSlot}
       {allowDrop}
       {dropToSlot}
+      {slotHasCompletedEvolution}
     />
 
     <CenterPiles
@@ -239,6 +252,7 @@
       {canPlaceSetupActive}
       {placeSetupActive}
       {showZone}
+      {slotHasCompletedEvolution}
     />
 
     <BenchZone
@@ -259,6 +273,7 @@
       {clickSlot}
       {allowDrop}
       {dropToSlot}
+      {slotHasCompletedEvolution}
     />
   </div>
 
