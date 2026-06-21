@@ -14,6 +14,10 @@ export const actionAnimationTiming = {
   deckRevealReturnMs: 420,
   deckRevealReturnStepMs: 35,
   evolveMs: 680,
+  attackAnnounceMs: 520,
+  damageMs: 320,
+  damageVisualMs: 560,
+  knockOutMs: 620,
 } as const;
 
 export function actionAnimationBatchEvents(
@@ -84,7 +88,30 @@ function animationPhaseForEvent(event: ActionTimelineEvent): AnimationPhase | nu
     };
   }
 
+  if (event.kind === 'Attack') {
+    return {
+      key: `Attack:${playerKey}`,
+      durationMs: actionAnimationTiming.attackAnnounceMs,
+      stepMs: actionAnimationTiming.attackAnnounceMs,
+    };
+  }
+
+  if (event.kind === 'HpChange' || event.kind === 'HPChange') {
+    return {
+      key: `Damage:${playerKey}`,
+      durationMs: actionAnimationTiming.damageMs,
+      stepMs: actionAnimationTiming.damageMs,
+    };
+  }
+
   if (event.kind === 'MoveCard') {
+    if (isKnockOutMove(fromArea, toArea)) {
+      return {
+        key: `KnockOut:${playerKey}`,
+        durationMs: actionAnimationTiming.knockOutMs,
+        stepMs: actionAnimationTiming.knockOutMs,
+      };
+    }
     if (fromArea === CabtAreaType.HAND && isHandMoveDestination(toArea)) {
       return {
         key: `MoveCard:${playerKey}:${fromArea}->${toArea}`,
@@ -150,4 +177,9 @@ function isHandMoveDestination(area: number): boolean {
     || area === CabtAreaType.ACTIVE
     || area === CabtAreaType.BENCH
     || area === CabtAreaType.DECK;
+}
+
+function isKnockOutMove(fromArea: number, toArea: number): boolean {
+  return toArea === CabtAreaType.DISCARD
+    && (fromArea === CabtAreaType.ACTIVE || fromArea === CabtAreaType.BENCH);
 }

@@ -37,14 +37,31 @@ describe('actionAnimationStartMs', () => {
     );
   });
 
-  it('does not let non-animated events add delay', () => {
+  it('sequences attack consequences in gameplay order', () => {
     const events: ActionTimelineEvent[] = [
       event(1, 'Attack', { cardId: 721 }),
-      event(2, 'HpChange', { value: -30 }),
-      event(3, 'Draw', { cardId: 3, serial: 12 }),
+      event(2, 'MoveCard', { cardId: 3, serial: 101, fromArea: CabtAreaType.DECK, toArea: CabtAreaType.DISCARD }),
+      event(3, 'MoveCard', { cardId: 3, serial: 102, fromArea: CabtAreaType.DECK, toArea: CabtAreaType.DISCARD }),
+      event(4, 'HpChange', { value: -200 }),
+      event(5, 'MoveCard', { cardId: 721, serial: 64, fromArea: CabtAreaType.ACTIVE, toArea: CabtAreaType.DISCARD }),
     ];
 
-    expect(actionAnimationStartMs(events, events[2])).toBe(0);
+    expect(actionAnimationStartMs(events, events[0])).toBe(0);
+    expect(actionAnimationStartMs(events, events[1])).toBe(actionAnimationTiming.attackAnnounceMs);
+    expect(actionAnimationStartMs(events, events[2])).toBe(
+      actionAnimationTiming.attackAnnounceMs + actionAnimationTiming.deckDiscardStepMs,
+    );
+    expect(actionAnimationStartMs(events, events[3])).toBe(
+      actionAnimationTiming.attackAnnounceMs
+        + actionAnimationTiming.deckDiscardMs
+        + actionAnimationTiming.deckDiscardStepMs,
+    );
+    expect(actionAnimationStartMs(events, events[4])).toBe(
+      actionAnimationTiming.attackAnnounceMs
+        + actionAnimationTiming.deckDiscardMs
+        + actionAnimationTiming.deckDiscardStepMs
+        + actionAnimationTiming.damageMs,
+    );
   });
 
   it('gives evolution its own animation duration before follow-up effects', () => {

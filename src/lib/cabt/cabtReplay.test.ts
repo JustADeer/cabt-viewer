@@ -1611,4 +1611,90 @@ describe('cabtReplayToSnapshot', () => {
     expect(snapshot.steps[0].label).toBe('Player 1 used Myriad Leaf Shower with Teal Mask Ogerpon ex.');
     expect(snapshot.steps[0].actionTimeline?.map((event) => event.kind)).toEqual(['Attack', 'HpChange', 'MoveCard']);
   });
+
+  it('splits attacks into announce, discard, damage, and knockout animation phases', () => {
+    const snapshot = cabtReplayToSnapshot({
+      visualize: [{
+        current: {
+          turn: 3,
+          yourIndex: 0,
+          result: -1,
+          players: [{
+            active: [{ id: 723, serial: 13, hp: 350, maxHp: 350 }],
+            bench: [],
+            benchMax: 5,
+            handCount: 0,
+            deckCount: 45,
+            discard: [],
+            prize: [],
+          }, {
+            active: [{ id: 721, serial: 64, hp: 150, maxHp: 150 }],
+            bench: [{ id: 721, serial: 99, hp: 150, maxHp: 150 }],
+            benchMax: 5,
+            handCount: 0,
+            deckCount: 46,
+            discard: [],
+            prize: [],
+          }],
+        },
+      }, {
+        logs: [
+          { type: 'Attack', playerIndex: 0, cardId: 723, serial: 13, attackId: 1046 },
+          { type: 'MoveCard', playerIndex: 0, cardId: 3, serial: 56, fromArea: CabtAreaType.DECK, toArea: CabtAreaType.DISCARD },
+          { type: 'MoveCard', playerIndex: 0, cardId: 1235, serial: 27, fromArea: CabtAreaType.DECK, toArea: CabtAreaType.DISCARD },
+          { type: 'HpChange', playerIndex: 1, cardId: 721, serial: 64, value: -400, putDamageCounter: false },
+          { type: 'MoveCard', playerIndex: 1, cardId: 721, serial: 64, fromArea: CabtAreaType.ACTIVE, toArea: CabtAreaType.DISCARD },
+          { type: 'MoveCard', playerIndex: 1, cardId: 3, serial: 96, fromArea: CabtAreaType.ENERGY, toArea: CabtAreaType.DISCARD },
+        ],
+        current: {
+          turn: 3,
+          yourIndex: 0,
+          result: -1,
+          players: [{
+            active: [{ id: 723, serial: 13, hp: 350, maxHp: 350 }],
+            bench: [],
+            benchMax: 5,
+            handCount: 0,
+            deckCount: 43,
+            discard: [{ id: 3, serial: 56 }, { id: 1235, serial: 27 }],
+            prize: [],
+          }, {
+            active: [],
+            bench: [{ id: 721, serial: 99, hp: 150, maxHp: 150 }],
+            benchMax: 5,
+            handCount: 0,
+            deckCount: 46,
+            discard: [{ id: 721, serial: 64 }, { id: 3, serial: 96 }],
+            prize: [],
+          }],
+        },
+      }],
+    });
+
+    const step = snapshot.steps[1];
+    expect(step.actionTimeline?.map((event) => event.kind)).toEqual([
+      'Attack',
+      'MoveCard',
+      'MoveCard',
+      'HpChange',
+      'MoveCard',
+      'MoveCard',
+    ]);
+    expect(step.animationPhases?.map((phase) => phase.key.replace(/:\d+$/, ''))).toEqual([
+      'Attack',
+      'DeckDiscard',
+      'Damage',
+      'KnockOut',
+    ]);
+    expect(step.animationPhases?.[0].view.players[1].active.pokemon?.serial).toBe(64);
+    expect(step.animationPhases?.[2].view.players[1].active.pokemon?.serial).toBe(64);
+    expect(step.animationPhases?.[2].view.players[1].active.damage).toBe(0);
+    expect(step.animationPhases?.[3].view.players[1].active.pokemon?.serial).toBe(64);
+    expect(step.animationPhases?.[3].view.players[1].active.damage).toBe(400);
+    expect(step.animationPhases?.[3].view.players[1].bench[0].pokemon?.serial).toBe(99);
+    expect(step.animationPhases?.[3].view.players[1].bench[0].damage).toBe(0);
+    expect(snapshot.views[step.stateIndex].players[1].active.empty).toBe(true);
+    expect(snapshot.views[step.stateIndex].players[1].discard.map((card) => card.serial)).toEqual([96, 64]);
+    expect(snapshot.views[step.stateIndex].players[1].discard.at(-1)?.serial).toBe(64);
+  });
 });

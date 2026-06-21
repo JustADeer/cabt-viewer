@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import ActiveFocus from './lib/components/ActiveFocus.svelte';
   import AppHeader from './lib/components/AppHeader.svelte';
+  import AttackAnimation from './lib/components/AttackAnimation.svelte';
   import BoardLayer from './lib/components/BoardLayer.svelte';
   import BoardPromptStrip from './lib/components/prompts/BoardPromptStrip.svelte';
   import EndGamePrompt from './lib/components/EndGamePrompt.svelte';
@@ -115,6 +116,9 @@
   let animationScopeKey = $derived(replayMode
     ? `replay-${replayStore.stepIndex}-${replayStore.animationPhaseIndex}`
     : `live-${game?.actionTimeline?.at(-1)?.id ?? 0}`);
+  let animationStepEvents = $derived(replayMode
+    ? (replayStore.currentStep?.actionTimeline ?? [])
+    : (game?.actionTimeline ?? []));
   let finalEvolutionEvents = $derived(replayMode ? replayFinalEvolutionEvents() : []);
   let error = $derived(homeMode === 'logs' ? replayStore.error : gameStore.error);
   let busy = $derived(replayMode ? replayStore.loading : gameStore.busy);
@@ -1330,6 +1334,13 @@
 
         <HandResetAnimation
           events={game.actionTimeline ?? []}
+          scopeKey={animationScopeKey}
+          {replayMode}
+        />
+
+        <AttackAnimation
+          events={game.actionTimeline ?? []}
+          stepEvents={animationStepEvents}
           scopeKey={animationScopeKey}
           {replayMode}
         />

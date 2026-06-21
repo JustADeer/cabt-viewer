@@ -190,6 +190,7 @@ export function cabtReplayToSnapshot(input: unknown): ReplaySnapshot {
   }
 
   applyPendingPlayedDiscards(steps, views);
+  applyKnockOutDiscardTopOrdering(steps, views);
 
   steps.forEach((step, index) => {
     step.index = index;
@@ -804,7 +805,7 @@ type AnimationEventPhase = {
 function animationEventPhases(events: ActionTimelineEvent[]): AnimationEventPhase[] {
   const phases: AnimationEventPhase[] = [];
   for (const event of events) {
-    const key = animationPhaseKey(event);
+    const key = animationPhaseKeyForReplayEvent(event, phases);
     if (!key) {
       const last = phases.at(-1);
       if (last) {
@@ -828,6 +829,20 @@ function animationEventPhases(events: ActionTimelineEvent[]): AnimationEventPhas
   return phases.filter((phase) => phase.events.some((event) => animationPhaseKey(event)));
 }
 
+function animationPhaseKeyForReplayEvent(event: ActionTimelineEvent, phases: AnimationEventPhase[]): string | null {
+  const key = animationPhaseKey(event);
+  if (!key) {
+    return null;
+  }
+  if (key.startsWith('Damage:') && !phases.some((phase) => phase.key.startsWith('Attack:'))) {
+    return null;
+  }
+  if (key.startsWith('KnockOut:') && !phases.some((phase) => phase.key.startsWith('Attack:'))) {
+    return null;
+  }
+  return key;
+}
+
 function animationPhaseLabel(phase: AnimationEventPhase): string | undefined {
   const event = phase.events.find((candidate) => animationPhaseKey(candidate));
   if (!event) {
@@ -836,7 +851,15 @@ function animationPhaseLabel(phase: AnimationEventPhase): string | undefined {
   const actor = playerLabel(event.playerIndex);
   const cardEventCount = phase.events.filter((candidate) => animationPhaseKey(candidate) === phase.key).length;
 
-  if (phase.key.startsWith('Play:') || phase.key.startsWith('Attach:') || phase.key.startsWith('Evolve:') || phase.key.startsWith('Shuffle:')) {
+  if (
+    phase.key.startsWith('Play:')
+    || phase.key.startsWith('Attach:')
+    || phase.key.startsWith('Evolve:')
+    || phase.key.startsWith('Shuffle:')
+    || phase.key.startsWith('Attack:')
+    || phase.key.startsWith('Damage:')
+    || phase.key.startsWith('KnockOut:')
+  ) {
     return event.message;
   }
   if (phase.key.startsWith('HandToDeck:')) {
@@ -879,7 +902,16 @@ function animationPhaseKey(event: ActionTimelineEvent): string | null {
   if (event.kind === 'Play' || event.kind === 'Attach' || event.kind === 'Evolve') {
     return `${event.kind}:${playerKey}`;
   }
+  if (event.kind === 'Attack') {
+    return `Attack:${playerKey}`;
+  }
+  if (event.kind === 'HpChange' || event.kind === 'HPChange') {
+    return `Damage:${playerKey}`;
+  }
   if (event.kind === 'MoveCard') {
+    if (isKnockOutMove(fromArea, toArea)) {
+      return `KnockOut:${playerKey}`;
+    }
     if (fromArea === CabtAreaType.HAND && toArea === CabtAreaType.DECK) {
       return `HandToDeck:${playerKey}`;
     }
@@ -910,11 +942,17 @@ function animationPhaseKey(event: ActionTimelineEvent): string | null {
 
 function animationPhaseUsesSourceView(key: string): boolean {
   return key.startsWith('HandToDeck:')
-    || key.startsWith('Evolve:');
+    || key.startsWith('Evolve:')
+    || key.startsWith('Attack:')
+    || key.startsWith('Damage:')
+    || key.startsWith('KnockOut:');
 }
 
 function animationPhaseNeedsDedicatedView(phase: AnimationEventPhase): boolean {
-  return phase.key.startsWith('Evolve:');
+  return phase.key.startsWith('Evolve:')
+    || phase.key.startsWith('Attack:')
+    || phase.key.startsWith('Damage:')
+    || phase.key.startsWith('KnockOut:');
 }
 
 function animationSourceViewForPhase(
@@ -924,6 +962,12 @@ function animationSourceViewForPhase(
 ): GameView {
   if (phase.key.startsWith('Evolve:')) {
     return projectedViewForEvents(phaseStartView, currentView, phase.events, { deferBoardStateEvents: true });
+  }
+  if (phase.key.startsWith('Attack:') || phase.key.startsWith('Damage:')) {
+    return projectedViewForEvents(phaseStartView, currentView, phase.events, { deferBoardStateEvents: true });
+  }
+  if (phase.key.startsWith('KnockOut:')) {
+    return projectedViewForEvents(phaseStartView, currentView, phase.events, { deferMoveCardEvents: true });
   }
   return phaseStartView;
 }
@@ -956,6 +1000,15 @@ function animationPhaseCardDurationMs(key: string): number {
   if (key.startsWith('Evolve:')) {
     return actionAnimationTiming.evolveMs;
   }
+  if (key.startsWith('Attack:')) {
+    return actionAnimationTiming.attackAnnounceMs;
+  }
+  if (key.startsWith('Damage:')) {
+    return actionAnimationTiming.damageMs;
+  }
+  if (key.startsWith('KnockOut:')) {
+    return actionAnimationTiming.knockOutMs;
+  }
   return actionAnimationTiming.handMoveMs;
 }
 
@@ -978,6 +1031,15 @@ function animationPhaseStepMs(key: string): number {
   if (key.startsWith('Shuffle:')) {
     return actionAnimationTiming.deckShuffleMs;
   }
+  if (key.startsWith('Attack:')) {
+    return actionAnimationTiming.attackAnnounceMs;
+  }
+  if (key.startsWith('Damage:')) {
+    return actionAnimationTiming.damageMs;
+  }
+  if (key.startsWith('KnockOut:')) {
+    return actionAnimationTiming.knockOutMs;
+  }
   return actionAnimationTiming.handMoveStepMs;
 }
 
@@ -985,7 +1047,7 @@ function projectedViewForEvents(
   baseView: GameView,
   currentView: GameView,
   events: ActionTimelineEvent[],
-  options: { deferBoardStateEvents?: boolean } = {},
+  options: { deferBoardStateEvents?: boolean; deferMoveCardEvents?: boolean } = {},
 ): GameView {
   const view: GameView = {
     ...currentView,
@@ -1042,6 +1104,58 @@ function applyPendingPlayedDiscards(steps: ReplayStep[], views: GameView[]): voi
       step.displayView = gameViewWithPendingDiscards(view, missingPendingCards);
     }
   }
+}
+
+function applyKnockOutDiscardTopOrdering(steps: ReplayStep[], views: GameView[]): void {
+  for (const [stepIndex, step] of steps.entries()) {
+    const knockOutEvents = (step.actionTimeline ?? []).filter(isKnockOutEvent);
+    if (!knockOutEvents.length) {
+      continue;
+    }
+
+    for (const event of knockOutEvents) {
+      const playerIndex = event.playerIndex;
+      if (playerIndex === undefined) {
+        continue;
+      }
+      const nextDiscardStateIndex = nextDiscardStateIndexForPlayer(steps, stepIndex, playerIndex);
+      const endStateIndex = nextDiscardStateIndex ?? views.length;
+      for (let viewIndex = step.stateIndex; viewIndex < endStateIndex; viewIndex += 1) {
+        promoteDiscardCardToTop(views[viewIndex], event);
+      }
+    }
+  }
+}
+
+function nextDiscardStateIndexForPlayer(steps: ReplayStep[], afterStepIndex: number, playerIndex: number): number | undefined {
+  for (let index = afterStepIndex + 1; index < steps.length; index += 1) {
+    const step = steps[index];
+    if (
+      step.stateIndex > steps[afterStepIndex].stateIndex
+      && (step.actionTimeline ?? []).some((event) => event.playerIndex === playerIndex && movesToDiscard(event))
+    ) {
+      return step.stateIndex;
+    }
+  }
+  return undefined;
+}
+
+function promoteDiscardCardToTop(view: GameView | undefined, event: ActionTimelineEvent): void {
+  const playerIndex = event.playerIndex;
+  if (playerIndex === undefined || !view?.players[playerIndex]) {
+    return;
+  }
+  const player = view.players[playerIndex];
+  const cardIndex = player.discard.findIndex((card) => eventCardMatches(card, event));
+  if (cardIndex < 0 || cardIndex === player.discard.length - 1) {
+    return;
+  }
+  const discard = [...player.discard];
+  const [card] = discard.splice(cardIndex, 1);
+  view.players[playerIndex] = {
+    ...player,
+    discard: [...discard, card],
+  };
 }
 
 function pendingPlayedDiscardForEvent(view: GameView, event: ActionTimelineEvent): PendingPlayedDiscard | undefined {
@@ -1103,7 +1217,7 @@ function applyReplayEvent(
   view: GameView,
   currentView: GameView,
   event: ActionTimelineEvent,
-  options: { deferBoardStateEvents?: boolean } = {},
+  options: { deferBoardStateEvents?: boolean; deferMoveCardEvents?: boolean } = {},
 ): void {
   const playerIndex = event.playerIndex;
   if (playerIndex === undefined || !view.players[playerIndex] || !currentView.players[playerIndex]) {
@@ -1141,6 +1255,19 @@ function applyReplayEvent(
     return;
   }
 
+  if (event.kind === 'HpChange' || event.kind === 'HPChange') {
+    if (options.deferBoardStateEvents) {
+      return;
+    }
+    if (applyDamageReplayEvent(player, event)) {
+      return;
+    }
+    player.active = currentPlayer.active;
+    player.bench = currentPlayer.bench;
+    player.discard = currentPlayer.discard;
+    return;
+  }
+
   if (isBoardStateEvent(event.kind)) {
     if (options.deferBoardStateEvents) {
       return;
@@ -1154,12 +1281,60 @@ function applyReplayEvent(
   if (!isMoveCardKind(event.kind)) {
     return;
   }
+  if (options.deferMoveCardEvents) {
+    return;
+  }
 
   const params = event.params as Record<string, unknown> | undefined;
   const fromArea = Number(params?.fromArea);
   const toArea = Number(params?.toArea);
   applyReplayAreaDelta(player, currentPlayer, fromArea, -1, event);
   applyReplayAreaDelta(player, currentPlayer, toArea, 1, event);
+}
+
+function isKnockOutMove(fromArea: number, toArea: number): boolean {
+  return toArea === CabtAreaType.DISCARD
+    && (fromArea === CabtAreaType.ACTIVE || fromArea === CabtAreaType.BENCH);
+}
+
+function isKnockOutEvent(event: ActionTimelineEvent): boolean {
+  const params = event.params as Record<string, unknown> | undefined;
+  return isMoveCardKind(event.kind)
+    && isKnockOutMove(Number(params?.fromArea), Number(params?.toArea));
+}
+
+function movesToDiscard(event: ActionTimelineEvent): boolean {
+  const params = event.params as Record<string, unknown> | undefined;
+  return isMoveCardKind(event.kind) && Number(params?.toArea) === CabtAreaType.DISCARD;
+}
+
+function applyDamageReplayEvent(player: PlayerView, event: ActionTimelineEvent): boolean {
+  const params = event.params as Record<string, unknown> | undefined;
+  const serial = Number(params?.serial);
+  const cardId = Number(params?.cardId);
+  const value = Number(params?.value);
+  if (!Number.isFinite(value)) {
+    return false;
+  }
+
+  let updated = false;
+  const updateSlot = (slot: PokemonSlotView): PokemonSlotView => {
+    const matches = Number.isFinite(serial)
+      ? slot.pokemon?.serial === serial
+      : Number.isFinite(cardId) && slot.pokemon?.id === cardId;
+    if (!matches) {
+      return slot;
+    }
+    updated = true;
+    return {
+      ...slot,
+      damage: Math.max(0, Math.round(slot.damage - value)),
+    };
+  };
+
+  player.active = updateSlot(player.active);
+  player.bench = player.bench.map(updateSlot);
+  return updated;
 }
 
 function isBoardStateEvent(kind: string | undefined): boolean {
