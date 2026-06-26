@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { LocalEngineController } from './localEngine';
+import { promptIdForObservation } from '../lib/cabt/demoEngine';
 import { SlotType, targetFor } from '../lib/game/types';
-import { CabtAreaType, CabtLogType, CabtOptionType, CabtSelectContext } from '../lib/cabt/types';
+import { CabtAreaType, CabtLogType, CabtOptionType, CabtSelectContext, CabtSelectType } from '../lib/cabt/types';
 
 describe('LocalEngineController', () => {
   process.env.CABT_ENGINE_MODE = 'demo';
@@ -428,6 +429,60 @@ describe('LocalEngineController', () => {
     expect(response.ok).toBe(true);
     if (!response.ok) return;
     expect(response.sequence).toHaveLength(5);
+  });
+
+  it('rejects stale CABT prompt resolutions before contacting the bridge', async () => {
+    const previousEngineMode = process.env.CABT_ENGINE_MODE;
+    delete process.env.CABT_ENGINE_MODE;
+    try {
+      const engine = new LocalEngineController() as any;
+      let bridgeCalled = false;
+      const observation = {
+        select: {
+          type: CabtSelectType.YES_NO,
+          context: CabtSelectContext.ACTIVATE,
+          minCount: 1,
+          maxCount: 1,
+          remainDamageCounter: 0,
+          remainEnergyCost: 0,
+          option: [{ type: CabtOptionType.YES }, { type: CabtOptionType.NO }],
+          deck: null,
+          contextCard: null,
+          effect: null,
+        },
+        logs: [],
+        current: currentState(),
+      };
+      engine.sessionId = 'test-session';
+      engine.dataMaps = { cardData: {}, attacks: {} };
+      engine.observation = observation;
+      engine.bridge = {
+        request: async () => {
+          bridgeCalled = true;
+          throw new Error('stale prompt should not reach the bridge');
+        },
+      };
+
+      const response = await engine.handle({
+        type: 'resolvePrompt',
+        payload: {
+          sessionId: 'test-session',
+          id: promptIdForObservation(observation) + 1,
+          result: 0,
+        },
+      });
+
+      expect(response.ok).toBe(false);
+      if (response.ok) return;
+      expect(response.error).toBe('That prompt is no longer current.');
+      expect(bridgeCalled).toBe(false);
+    } finally {
+      if (previousEngineMode === undefined) {
+        delete process.env.CABT_ENGINE_MODE;
+      } else {
+        process.env.CABT_ENGINE_MODE = previousEngineMode;
+      }
+    }
   });
 });
 

@@ -127,6 +127,7 @@
   let commandApi = $derived<GameCommandApi>(localGameApi);
   let resolvingPrompt = $derived(gameStore.resolvingPrompt);
   let playingSequence = $derived(gameStore.playingSequence);
+  let commandBusy = $derived(sessionBusy || resolvingPrompt || playingSequence);
   let selectedHand = $derived(selectionStore.selectedHand);
   let draggingHand = $derived(selectionStore.draggingHand);
   let focusedSlot = $derived(selectionStore.focusedSlot);
@@ -432,7 +433,7 @@
       )
     : []);
   let canPlayOnBoard = $derived(
-    !!bottomPlayer &&
+    !commandBusy && !!bottomPlayer &&
     canPlayCardToBoardArea({
       selected: selectedCard,
       selectedPlayerIndex: selectedHand?.playerIndex,
@@ -447,6 +448,11 @@
   $effect(() => {
     if (currentPrompt || gameFinished) {
       selectionStore.clearFocus();
+    }
+  });
+  $effect(() => {
+    if (retreatSource && !canAct(retreatSource.ownerIndex)) {
+      retreatSource = null;
     }
   });
   $effect(() => {
@@ -599,10 +605,13 @@
   }
 
   async function playToTarget(target: CardTarget) {
-    if (!selectedHand || !game || !canAct(selectedHand.playerIndex)) {
+    const handSelection = selectedHand;
+    if (!handSelection || !game || !canAct(handSelection.playerIndex)) {
       return;
     }
-    await gameSessionStore.run(() => commandApi.playCard(selectedHand!.playerIndex, selectedHand!.handIndex, target));
+    selectionStore.setSelectedHand(null);
+    selectionStore.clearDragging();
+    await gameSessionStore.run(() => commandApi.playCard(handSelection.playerIndex, handSelection.handIndex, target));
   }
 
   function playToSlot(slot: PokemonSlotView) {
@@ -670,23 +679,27 @@
   }
 
   async function concede() {
-    if (!game || !activePlayer || gameFinished) return;
+    if (!game || !activePlayer || commandBusy || gameFinished) return;
     await gameSessionStore.run(() => commandApi.concede(game.activePlayerIndex));
   }
 
   async function passTurn() {
-    if (!game) return;
+    if (!game || !activePlayer || !canAct(activePlayer.index)) return;
     await gameSessionStore.run(() => commandApi.passTurn(game.activePlayerIndex));
   }
 
   async function retreat(to: number) {
-    if (!game) return;
+    const playerIndex = retreatSource?.ownerIndex ?? game?.activePlayerIndex;
+    if (!game || playerIndex === undefined || !canAct(playerIndex)) return;
     retreatSource = null;
-    await gameSessionStore.run(() => commandApi.retreat(game.activePlayerIndex, to));
+    await gameSessionStore.run(() => commandApi.retreat(playerIndex, to));
   }
 
   function canRetreatToSelectedTarget(slot: PokemonSlotView) {
     if (!game || !retreatSource || slot.slot !== 'bench' || slot.empty || slot.ownerIndex !== retreatSource.ownerIndex) {
+      return false;
+    }
+    if (!canAct(retreatSource.ownerIndex)) {
       return false;
     }
     const retreatAction = game.players[retreatSource.ownerIndex]?.availableActions?.active?.retreat;
@@ -697,7 +710,7 @@
   }
 
   function startRetreatSelection() {
-    if (!focusedSlot || focusedSlot.slot !== 'active') {
+    if (!focusedSlot || focusedSlot.slot !== 'active' || !canAct(focusedSlot.ownerIndex)) {
       return;
     }
     retreatSource = focusedSlot;
@@ -902,6 +915,9 @@
   }
 
   function canAct(playerIndex: number) {
+    if (commandBusy) {
+      return false;
+    }
     if (replayMode) {
       return false;
     }
@@ -1187,7 +1203,7 @@
         bind:animateActions={viewSettingsStore.animateActions}
         bind:actionStepDelayMs={viewSettingsStore.actionStepDelayMs}
         bind:themePreference={viewSettingsStore.themePreference}
-        busy={sessionBusy}
+        busy={commandBusy}
         promptActive={replayMode || !!currentPrompt}
         {gameFinished}
         {error}

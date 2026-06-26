@@ -570,7 +570,7 @@ function buildPrompts(observation: CabtObservation, activePlayerIndex: number, d
   if (!select || select.type === CabtSelectType.MAIN) {
     return [];
   }
-  const id = promptIdForSelect(select);
+  const id = promptIdForObservation(observation);
   if (isPrizeSelectionPrompt(select)) {
     return [
       {
@@ -680,8 +680,18 @@ function isCardSelectionPrompt(observation: CabtObservation) {
   return select.option.some((option, optionIndex) => option.type === CabtOptionType.CARD || !!cardForOption(option, observation, optionIndex));
 }
 
-function promptIdForSelect(select: NonNullable<CabtObservation['select']>) {
+export function promptIdForObservation(observation: CabtObservation) {
   return hashPromptKey(JSON.stringify({
+    current: observation.current,
+    select: promptSelectKey(observation.select),
+  }));
+}
+
+function promptSelectKey(select: CabtObservation['select']) {
+  if (!select) {
+    return null;
+  }
+  return {
     context: select.context,
     type: select.type,
     min: select.minCount,
@@ -696,7 +706,7 @@ function promptIdForSelect(select: NonNullable<CabtObservation['select']>) {
       option.serial,
       option.number,
     ]),
-  }));
+  };
 }
 
 function hashPromptKey(value: string) {

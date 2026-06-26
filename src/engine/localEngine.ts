@@ -3,13 +3,14 @@ import fs from 'node:fs';
 import path from 'node:path';
 import readline from 'node:readline';
 import { fileURLToPath } from 'node:url';
-import { CabtDemoController, cabtCardToView, cabtObservationToGameView, type CabtDataMaps } from '../lib/cabt/demoEngine';
+import { CabtDemoController, cabtCardToView, cabtObservationToGameView, promptIdForObservation, type CabtDataMaps } from '../lib/cabt/demoEngine';
 import { cabtLogsToTimeline } from '../lib/cabt/logFormat';
 import {
   CabtAreaType,
   CabtLogType,
   CabtOptionType,
   CabtSelectContext,
+  CabtSelectType,
   type CabtAttack,
   type CabtCard,
   type CabtCardData,
@@ -136,6 +137,7 @@ export class LocalEngineController {
         case 'passTurn':
           return await this.selectMatchingOption((option) => option.type === CabtOptionType.END);
         case 'resolvePrompt':
+          this.assertPromptId(command.payload?.id);
           return await this.applySelection(this.normalizePromptSelection(command.payload?.result));
         default:
           return { ok: false, error: `Unsupported command: ${command.type}`, view: this.view() };
@@ -284,6 +286,21 @@ export class LocalEngineController {
     this.applyBridgeResponse(response);
     await this.applyPendingRetreatTarget();
     return this.viewResponse();
+  }
+
+  private assertPromptId(promptId: unknown): void {
+    const observation = this.observation;
+    const select = observation?.select;
+    if (!observation || !select || select.type === CabtSelectType.MAIN) {
+      throw new Error('No CABT prompt is currently available.');
+    }
+    if (typeof promptId !== 'number') {
+      throw new Error('Prompt id is required.');
+    }
+    const currentPromptId = promptIdForObservation(observation);
+    if (promptId !== currentPromptId) {
+      throw new Error('That prompt is no longer current.');
+    }
   }
 
   private canBatchRepeatedSingleSelection(select: CabtSelectData, selection: number[]): boolean {

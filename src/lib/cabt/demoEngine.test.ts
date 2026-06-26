@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cabtObservationToGameView } from './demoEngine';
+import { cabtObservationToGameView, promptIdForObservation } from './demoEngine';
 import type { CabtDataMaps } from './demoEngine';
 import { CabtAreaType, CabtCardType, CabtOptionType, CabtSelectContext, CabtSelectType } from './types';
 import type { CabtObservation } from './types';
@@ -558,7 +558,60 @@ describe('cabtObservationToGameView', () => {
       { index: 5, cards: [] },
     ]);
   });
+
+  it('keys prompt ids by current state as well as select shape', () => {
+    const observation = promptObservation();
+    const nextObservation = {
+      ...observation,
+      current: {
+        ...observation.current,
+        turnActionCount: observation.current.turnActionCount + 1,
+      },
+    } satisfies CabtObservation;
+
+    const view = cabtObservationToGameView(observation, [], { cardData: {}, attacks: {} });
+    const nextView = cabtObservationToGameView(nextObservation, [], { cardData: {}, attacks: {} });
+
+    expect(view.prompts[0]?.id).toBe(promptIdForObservation(observation));
+    expect(nextView.prompts[0]?.id).toBe(promptIdForObservation(nextObservation));
+    expect(nextView.prompts[0]?.id).not.toBe(view.prompts[0]?.id);
+  });
 });
+
+function promptObservation(): CabtObservation {
+  return {
+    select: {
+      type: CabtSelectType.YES_NO,
+      context: CabtSelectContext.ACTIVATE,
+      minCount: 1,
+      maxCount: 1,
+      remainDamageCounter: 0,
+      remainEnergyCost: 0,
+      option: [{ type: CabtOptionType.YES }, { type: CabtOptionType.NO }],
+      deck: null,
+      contextCard: null,
+      effect: null,
+    },
+    logs: [],
+    current: {
+      turn: 3,
+      turnActionCount: 0,
+      yourIndex: 0,
+      firstPlayer: 0,
+      supporterPlayed: false,
+      stadiumPlayed: false,
+      energyAttached: true,
+      retreated: false,
+      result: -1,
+      stadium: [],
+      looking: null,
+      players: [
+        player(),
+        player(),
+      ],
+    },
+  };
+}
 
 function player() {
   return {
