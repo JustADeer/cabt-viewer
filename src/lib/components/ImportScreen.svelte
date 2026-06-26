@@ -1,8 +1,11 @@
 <script lang="ts">
+  import KaggleEpisodeBrowser from './KaggleEpisodeBrowser.svelte';
   import type { AgentOption, GameLogEntry } from '../home/catalog';
   import type { PlayerControl } from '../game/httpClient';
+  import type { KaggleEpisodeDay, KaggleEpisodeSummary } from '../kaggle/episodes';
 
   type HomeMode = 'play' | 'logs';
+  type LogSource = 'local' | 'kaggle';
 
   type Props = {
     homeMode: HomeMode;
@@ -27,6 +30,7 @@
     setHomeMode: (mode: HomeMode) => void;
     startGame: () => void;
     loadGameLog: (log: GameLogEntry) => void;
+    loadKaggleEpisode: (day: KaggleEpisodeDay, episode: KaggleEpisodeSummary) => void;
     refreshCatalog: () => void;
   };
 
@@ -53,9 +57,11 @@
     setHomeMode,
     startGame,
     loadGameLog,
+    loadKaggleEpisode,
     refreshCatalog,
   }: Props = $props();
 
+  let logSource = $state<LogSource>('kaggle');
   let deckOptions = $derived(agents.filter((agent) => !!agent.deckUrl));
   let startDisabled = $derived(
     busy
@@ -212,36 +218,64 @@
   {:else}
     <div class="log-toolbar">
       <strong>Game logs</strong>
-      <button type="button" disabled={catalogBusy} onclick={refreshCatalog}>
-        {catalogBusy ? 'Refreshing...' : 'Refresh'}
-      </button>
+      <span class="source-tabs" role="tablist" aria-label="Replay source">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={logSource === 'kaggle'}
+          class:active={logSource === 'kaggle'}
+          onclick={() => {
+            logSource = 'kaggle';
+          }}
+        >Kaggle archive</button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={logSource === 'local'}
+          class:active={logSource === 'local'}
+          onclick={() => {
+            logSource = 'local';
+          }}
+        >Local logs</button>
+      </span>
     </div>
 
-    {#if catalogError || error}
-      <pre class="error">{catalogError || error}</pre>
-    {/if}
-
-    {#if catalogBusy && gameLogs.length === 0}
-      <p class="empty">Loading game logs...</p>
-    {:else if gameLogs.length === 0}
-      <p class="empty">No game logs found in <code>public/game-logs</code>.</p>
+    {#if logSource === 'kaggle'}
+      <KaggleEpisodeBrowser busy={busy} openEpisode={loadKaggleEpisode} />
     {:else}
-      <div class="log-list">
-        {#each gameLogs as log}
-          <button type="button" disabled={busy} onclick={() => loadGameLog(log)}>
-            <span>
-              <strong>{log.name}</strong>
-              <small>{logPlayerLabel(log)}</small>
-            </span>
-            <span>
-              {#if log.createdAt}
-                <small>{log.createdAt}</small>
-              {/if}
-              <small>{log.file}</small>
-            </span>
-          </button>
-        {/each}
+      <div class="local-log-toolbar">
+        <span></span>
+        <button type="button" disabled={catalogBusy} onclick={refreshCatalog}>
+          {catalogBusy ? 'Refreshing...' : 'Refresh'}
+        </button>
       </div>
+
+      {#if catalogError || error}
+        <pre class="error">{catalogError || error}</pre>
+      {/if}
+
+      {#if catalogBusy && gameLogs.length === 0}
+        <p class="empty">Loading game logs...</p>
+      {:else if gameLogs.length === 0}
+        <p class="empty">No game logs found in <code>public/game-logs</code>.</p>
+      {:else}
+        <div class="log-list">
+          {#each gameLogs as log}
+            <button type="button" disabled={busy} onclick={() => loadGameLog(log)}>
+              <span>
+                <strong>{log.name}</strong>
+                <small>{logPlayerLabel(log)}</small>
+              </span>
+              <span>
+                {#if log.createdAt}
+                  <small>{log.createdAt}</small>
+                {/if}
+                <small>{log.file}</small>
+              </span>
+            </button>
+          {/each}
+        </div>
+      {/if}
     {/if}
   {/if}
 </section>
@@ -283,6 +317,36 @@
   .log-toolbar {
     display: flex;
     align-items: end;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .source-tabs {
+    display: inline-grid;
+    grid-template-columns: repeat(2, minmax(112px, 1fr));
+    gap: 4px;
+    padding: 4px;
+    border-radius: 8px;
+    border: 1px solid var(--surface-inset-border);
+    background: var(--surface-inset-bg);
+  }
+
+  .source-tabs button {
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--text-secondary);
+    font-weight: 900;
+  }
+
+  .source-tabs button.active {
+    background: var(--button-bg);
+    color: var(--button-text);
+    box-shadow: var(--surface-toolbar-shadow);
+  }
+
+  .local-log-toolbar {
+    display: flex;
     justify-content: space-between;
     gap: 12px;
   }
@@ -449,5 +513,8 @@
       flex-direction: column;
     }
 
+    .source-tabs {
+      width: 100%;
+    }
   }
 </style>

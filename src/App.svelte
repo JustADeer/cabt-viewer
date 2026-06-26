@@ -56,6 +56,7 @@
   import { createDamageTransferStrategy } from './lib/game/strategies/damageTransferStrategy';
   import { createPutDamageStrategy } from './lib/game/strategies/putDamageStrategy';
   import { loadAgentOptions, loadGameLogs, type AgentOption, type GameLogEntry } from './lib/home/catalog';
+  import { kaggleEpisodeReplayUrl, type KaggleEpisodeDay, type KaggleEpisodeSummary } from './lib/kaggle/episodes';
   import {
     SlotType,
     targetFor,
@@ -575,6 +576,16 @@
     activePlayerControls = ['self', 'self'];
     homeMode = 'logs';
     await replayStore.loadSaved(log.file || log.id);
+  }
+
+  async function loadKaggleEpisode(day: KaggleEpisodeDay, episode: KaggleEpisodeSummary) {
+    gameSessionStore.reset();
+    resetSaveReplayStatus();
+    zoneViewerStore.close();
+    viewSettingsStore.resetView();
+    activePlayerControls = ['self', 'self'];
+    homeMode = 'logs';
+    await replayStore.loadUrl(kaggleEpisodeReplayUrl(day.slug, episode.episodeId));
   }
 
   async function saveReplay() {
@@ -1162,6 +1173,7 @@
         }}
         startGame={startGame}
         {loadGameLog}
+        {loadKaggleEpisode}
         refreshCatalog={() => void refreshCatalog()}
       />
   {:else if bottomPlayer && topPlayer}
