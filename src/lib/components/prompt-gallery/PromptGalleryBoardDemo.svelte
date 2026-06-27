@@ -58,9 +58,6 @@
   let bottomBenchSlots = $derived(bottomPlayer.bench
     .filter((slot) => !slot.empty)
     .map((slot) => previewAttachEnergySlot(slot, attachPrompt(), attachAssignments, attachCards)));
-  let currentStadium = $derived(game.players.flatMap((player) => player.stadium)[0]);
-  let currentStadiumOwner = $derived(game.players.find((player) => player.stadium.length));
-
   function createStrategy(): BoardInteractionStrategy | null {
     if (prompt.className === 'PutDamagePrompt') {
       return createPutDamageStrategy({
@@ -301,8 +298,6 @@
       {bottomBenchSlots}
       {topActiveSlot}
       {bottomActiveSlot}
-      {currentStadium}
-      {currentStadiumOwner}
       canPlayToBenchArea={() => false}
       canPlaceSetupBench={() => false}
       playToBenchArea={noop}

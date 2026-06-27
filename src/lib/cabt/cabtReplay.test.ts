@@ -119,6 +119,170 @@ describe('cabtReplayToSnapshot', () => {
     expect(snapshot.views[0].players[0].active.energy).toHaveLength(0);
   });
 
+  it('assigns replay stadium cards only to their owning player', () => {
+    const snapshot = cabtReplayToSnapshot({
+      visualize: [{
+        current: {
+          turn: 1,
+          yourIndex: 0,
+          result: -1,
+          stadium: [{ id: 1264, serial: 62, playerIndex: 1 }],
+          players: [{
+            active: [],
+            bench: [],
+            benchMax: 5,
+            handCount: 0,
+            deckCount: 60,
+            prize: [],
+          }, {
+            active: [],
+            bench: [],
+            benchMax: 5,
+            handCount: 0,
+            deckCount: 60,
+            prize: [],
+          }],
+        },
+      }],
+    });
+
+    expect(snapshot.views[0].players[0].stadium).toHaveLength(0);
+    expect(snapshot.views[0].players[1].stadium.map((card) => card.serial)).toEqual([62]);
+  });
+
+  it('keeps played Stadium cards in the stadium zone instead of the resolving discard path', () => {
+    const snapshot = cabtReplayToSnapshot({
+      visualize: [{
+        current: {
+          turn: 1,
+          yourIndex: 0,
+          result: -1,
+          players: [{
+            active: [],
+            bench: [],
+            benchMax: 5,
+            hand: [{ id: 1264, serial: 62 }],
+            deckCount: 59,
+            discard: [],
+            prize: [],
+          }, {
+            active: [],
+            bench: [],
+            benchMax: 5,
+            handCount: 0,
+            deckCount: 60,
+            prize: [],
+          }],
+        },
+      }, {
+        logs: [
+          { type: 'Play', playerIndex: 0, cardId: 1264, serial: 62 },
+        ],
+        current: {
+          turn: 1,
+          yourIndex: 0,
+          result: -1,
+          stadium: [{ id: 1264, serial: 62, playerIndex: 0 }],
+          players: [{
+            active: [],
+            bench: [],
+            benchMax: 5,
+            hand: [],
+            deckCount: 59,
+            discard: [],
+            prize: [],
+          }, {
+            active: [],
+            bench: [],
+            benchMax: 5,
+            handCount: 0,
+            deckCount: 60,
+            prize: [],
+          }],
+        },
+      }],
+    });
+
+    const step = snapshot.steps[1];
+    expect(step.actionTimeline?.map((event) => event.kind)).toEqual(['Play']);
+    expect(step.animationPhases).toBeUndefined();
+    expect(step.displayView).toBeUndefined();
+    expect(snapshot.views[step.stateIndex].players[0].stadium.map((card) => card.serial)).toEqual([62]);
+    expect(snapshot.views[step.stateIndex].players[0].playZone).toHaveLength(0);
+    expect(snapshot.views[step.stateIndex].players[0].discard).toHaveLength(0);
+  });
+
+  it('keeps a countered Stadium visible until its discard animation phase', () => {
+    const snapshot = cabtReplayToSnapshot({
+      visualize: [{
+        current: {
+          turn: 1,
+          yourIndex: 0,
+          result: -1,
+          stadium: [{ id: 1255, serial: 120, playerIndex: 1 }],
+          players: [{
+            active: [],
+            bench: [],
+            benchMax: 5,
+            hand: [{ id: 1264, serial: 62 }],
+            deckCount: 59,
+            discard: [],
+            prize: [],
+          }, {
+            active: [],
+            bench: [],
+            benchMax: 5,
+            handCount: 0,
+            deckCount: 60,
+            discard: [],
+            prize: [],
+          }],
+        },
+      }, {
+        logs: [
+          { type: 'Play', playerIndex: 0, cardId: 1264, serial: 62 },
+          { type: 'MoveCard', playerIndex: 1, cardId: 1255, serial: 120, fromArea: CabtAreaType.STADIUM, toArea: CabtAreaType.DISCARD },
+        ],
+        current: {
+          turn: 1,
+          yourIndex: 0,
+          result: -1,
+          stadium: [{ id: 1264, serial: 62, playerIndex: 0 }],
+          players: [{
+            active: [],
+            bench: [],
+            benchMax: 5,
+            hand: [],
+            deckCount: 59,
+            discard: [],
+            prize: [],
+          }, {
+            active: [],
+            bench: [],
+            benchMax: 5,
+            handCount: 0,
+            deckCount: 60,
+            discard: [{ id: 1255, serial: 120 }],
+            prize: [],
+          }],
+        },
+      }],
+    });
+
+    const step = snapshot.steps[1];
+    expect(step.actionTimeline?.map((event) => event.kind)).toEqual(['Play', 'MoveCard']);
+    expect(step.animationPhases?.map((phase) => phase.key)).toEqual(['Play:0', 'StadiumMove:1:7->3']);
+    expect(step.animationPhases?.[0].view.players[0].stadium.map((card) => card.serial)).toEqual([62]);
+    expect(step.animationPhases?.[0].view.players[1].stadium.map((card) => card.serial)).toEqual([120]);
+    expect(step.animationPhases?.[0].view.players[1].discard).toHaveLength(0);
+    expect(step.animationPhases?.[1].view.players[0].stadium.map((card) => card.serial)).toEqual([62]);
+    expect(step.animationPhases?.[1].view.players[1].stadium.map((card) => card.serial)).toEqual([120]);
+    expect(step.animationPhases?.[1].view.players[1].discard).toHaveLength(0);
+    expect(snapshot.views[step.stateIndex].players[0].stadium.map((card) => card.serial)).toEqual([62]);
+    expect(snapshot.views[step.stateIndex].players[1].stadium).toHaveLength(0);
+    expect(snapshot.views[step.stateIndex].players[1].discard.map((card) => card.serial)).toEqual([120]);
+  });
+
   it('groups deterministic multi-prize frames into one replay step', () => {
     const snapshot = cabtReplayToSnapshot({
       visualize: [{
@@ -447,15 +611,21 @@ describe('cabtReplayToSnapshot', () => {
       }],
     });
 
-    expect(snapshot.steps[1].label).toBe('Player 1 played Mega Signal.');
-    expect(snapshot.steps[1].displayView?.players[0].hand.map((card) => card.serial)).toEqual([46]);
-    expect(snapshot.steps[1].displayView?.players[0].playZone.map((card) => card.serial)).toEqual([14]);
-    expect(snapshot.steps[1].displayView?.players[0].discard).toHaveLength(0);
-    expect(snapshot.views[snapshot.steps[1].stateIndex].players[0].discard).toHaveLength(0);
-    expect(snapshot.steps[2].displayView?.players[0].playZone.map((card) => card.serial)).toEqual([14]);
-    expect(snapshot.steps[2].displayView?.players[0].discard).toHaveLength(0);
-    expect(snapshot.views[snapshot.steps[2].stateIndex].players[0].discard).toHaveLength(0);
-    expect(snapshot.views[snapshot.steps[3].stateIndex].players[0].discard.map((card) => card.serial)).toEqual([14]);
+    const step = snapshot.steps[1];
+    expect(step.label).toBe('Player 1 played Mega Signal and revealed a card from their deck and put it into their hand.');
+    expect(step.stateIndex).toBe(3);
+    expect(step.actionTimeline?.map((event) => event.kind)).toEqual(['Play', 'MoveCard']);
+    expect(step.animationPhases?.map((phase) => phase.key)).toEqual(['Play:0', 'DeckSearchReveal:0']);
+    expect(step.animationPhases?.[0].view.players[0].hand.map((card) => card.serial)).toEqual([46]);
+    expect(step.animationPhases?.[0].view.players[0].playZone.map((card) => card.serial)).toEqual([14]);
+    expect(step.animationPhases?.[0].view.players[0].discard).toHaveLength(0);
+    expect(step.animationPhases?.[1].view.players[0].hand.map((card) => card.serial)).toEqual([46, 13]);
+    expect(step.animationPhases?.[1].view.players[0].playZone.map((card) => card.serial)).toEqual([14]);
+    expect(step.animationPhases?.[1].view.players[0].discard).toHaveLength(0);
+    expect(step.displayView?.players[0].hand.map((card) => card.serial)).toEqual([46, 13]);
+    expect(step.displayView?.players[0].playZone).toHaveLength(0);
+    expect(step.displayView?.players[0].discard.map((card) => card.serial)).toEqual([14]);
+    expect(snapshot.views[step.stateIndex].players[0].discard.map((card) => card.serial)).toEqual([14]);
   });
 
   it('keeps a played trainer in the resolving zone during the follow-up board move animation', () => {
@@ -544,18 +714,230 @@ describe('cabtReplayToSnapshot', () => {
       }],
     });
 
-    const playStep = snapshot.steps[1];
-    const switchStep = snapshot.steps[2];
-    expect(playStep.displayView?.players[0].playZone.map((card) => card.serial)).toEqual([14]);
-    expect(playStep.displayView?.players[0].discard).toHaveLength(0);
-    expect(snapshot.views[playStep.stateIndex].players[0].discard).toHaveLength(0);
-    expect(switchStep.animationPhases?.map((phase) => phase.key)).toEqual(['BoardMove:0']);
-    expect(switchStep.animationPhases?.[0].view.players[0].playZone.map((card) => card.serial)).toEqual([14]);
-    expect(switchStep.animationPhases?.[0].view.players[0].discard).toHaveLength(0);
-    expect(switchStep.animationPhases?.[0].view.players[0].active.pokemon?.serial).toBe(79);
-    expect(switchStep.displayView).toBeUndefined();
-    expect(snapshot.views[switchStep.stateIndex].players[0].discard.map((card) => card.serial)).toEqual([14]);
-    expect(snapshot.views[switchStep.stateIndex].players[0].active.pokemon?.serial).toBe(81);
+    const step = snapshot.steps[1];
+    expect(step.actionTimeline?.map((event) => event.kind)).toEqual(['Play', 'Switch']);
+    expect(step.animationPhases?.map((phase) => phase.key)).toEqual(['Play:0', 'BoardMove:0']);
+    expect(step.animationPhases?.[0].view.players[0].playZone.map((card) => card.serial)).toEqual([14]);
+    expect(step.animationPhases?.[0].view.players[0].discard).toHaveLength(0);
+    expect(step.animationPhases?.[0].view.players[0].active.pokemon?.serial).toBe(79);
+    expect(step.animationPhases?.[1].view.players[0].playZone.map((card) => card.serial)).toEqual([14]);
+    expect(step.animationPhases?.[1].view.players[0].discard).toHaveLength(0);
+    expect(step.animationPhases?.[1].view.players[0].active.pokemon?.serial).toBe(79);
+    expect(step.displayView?.players[0].playZone).toHaveLength(0);
+    expect(step.displayView?.players[0].discard.map((card) => card.serial)).toEqual([14]);
+    expect(step.displayView?.players[0].active.pokemon?.serial).toBe(81);
+    expect(snapshot.views[step.stateIndex].players[0].discard.map((card) => card.serial)).toEqual([14]);
+    expect(snapshot.views[step.stateIndex].players[0].active.pokemon?.serial).toBe(81);
+  });
+
+  it('coalesces a played evolution helper with its evolution animation', () => {
+    const snapshot = cabtReplayToSnapshot({
+      visualize: [{
+        current: {
+          turn: 1,
+          yourIndex: 0,
+          result: -1,
+          players: [{
+            active: [{ id: 722, serial: 6, hp: 70, maxHp: 70 }],
+            bench: [],
+            benchMax: 5,
+            hand: [
+              { id: 1079, serial: 32 },
+              { id: 723, serial: 13 },
+            ],
+            deckCount: 46,
+            discard: [],
+            prize: [],
+          }, {
+            active: [],
+            bench: [],
+            benchMax: 5,
+            handCount: 0,
+            deckCount: 53,
+            prize: [],
+          }],
+        },
+      }, {
+        logs: [
+          { type: 'Play', playerIndex: 0, cardId: 1079, serial: 32 },
+        ],
+        current: {
+          turn: 1,
+          yourIndex: 0,
+          result: -1,
+          players: [{
+            active: [{ id: 722, serial: 6, hp: 70, maxHp: 70 }],
+            bench: [],
+            benchMax: 5,
+            hand: [
+              { id: 723, serial: 13 },
+            ],
+            deckCount: 46,
+            discard: [],
+            prize: [],
+          }, {
+            active: [],
+            bench: [],
+            benchMax: 5,
+            handCount: 0,
+            deckCount: 53,
+            prize: [],
+          }],
+        },
+      }, {
+        logs: [
+          { type: 'Evolve', playerIndex: 0, cardId: 723, serial: 13, cardIdTarget: 722, serialTarget: 6 },
+        ],
+        current: {
+          turn: 1,
+          yourIndex: 0,
+          result: -1,
+          players: [{
+            active: [{
+              id: 723,
+              serial: 13,
+              hp: 350,
+              maxHp: 350,
+              preEvolution: [{ id: 722, serial: 6 }],
+            }],
+            bench: [],
+            benchMax: 5,
+            hand: [],
+            deckCount: 46,
+            discard: [{ id: 1079, serial: 32 }],
+            prize: [],
+          }, {
+            active: [],
+            bench: [],
+            benchMax: 5,
+            handCount: 0,
+            deckCount: 53,
+            prize: [],
+          }],
+        },
+      }],
+    });
+
+    const step = snapshot.steps[1];
+    expect(step.actionTimeline?.map((event) => event.kind)).toEqual(['Play', 'Evolve']);
+    expect(step.animationPhases?.map((phase) => phase.key)).toEqual(['Play:0', 'Evolve:0']);
+    expect(step.animationPhases?.[1].view.players[0].playZone.map((card) => card.serial)).toEqual([32]);
+    expect(step.animationPhases?.[1].view.players[0].discard).toHaveLength(0);
+    expect(step.animationPhases?.[1].view.players[0].active.pokemon?.serial).toBe(6);
+    expect(step.displayView?.players[0].playZone).toHaveLength(0);
+    expect(step.displayView?.players[0].discard.map((card) => card.serial)).toEqual([32]);
+    expect(snapshot.views[step.stateIndex].players[0].active.pokemon?.serial).toBe(13);
+  });
+
+  it('coalesces a played trainer with an attached-card discard animation', () => {
+    const snapshot = cabtReplayToSnapshot({
+      visualize: [{
+        current: {
+          turn: 1,
+          yourIndex: 0,
+          result: -1,
+          players: [{
+            active: [],
+            bench: [],
+            benchMax: 5,
+            hand: [
+              { id: 1081, serial: 35 },
+            ],
+            deckCount: 46,
+            discard: [],
+            prize: [],
+          }, {
+            active: [{
+              id: 722,
+              serial: 6,
+              hp: 70,
+              maxHp: 70,
+              energyCards: [{ id: 3, serial: 70 }],
+            }],
+            bench: [],
+            benchMax: 5,
+            handCount: 0,
+            deckCount: 53,
+            discard: [],
+            prize: [],
+          }],
+        },
+      }, {
+        logs: [
+          { type: 'Play', playerIndex: 0, cardId: 1081, serial: 35 },
+        ],
+        current: {
+          turn: 1,
+          yourIndex: 0,
+          result: -1,
+          players: [{
+            active: [],
+            bench: [],
+            benchMax: 5,
+            hand: [],
+            deckCount: 46,
+            discard: [],
+            prize: [],
+          }, {
+            active: [{
+              id: 722,
+              serial: 6,
+              hp: 70,
+              maxHp: 70,
+              energyCards: [{ id: 3, serial: 70 }],
+            }],
+            bench: [],
+            benchMax: 5,
+            handCount: 0,
+            deckCount: 53,
+            discard: [],
+            prize: [],
+          }],
+        },
+      }, {
+        logs: [
+          { type: 'MoveCard', playerIndex: 1, cardId: 3, serial: 70, fromArea: CabtAreaType.ENERGY, toArea: CabtAreaType.DISCARD },
+        ],
+        current: {
+          turn: 1,
+          yourIndex: 0,
+          result: -1,
+          players: [{
+            active: [],
+            bench: [],
+            benchMax: 5,
+            hand: [],
+            deckCount: 46,
+            discard: [{ id: 1081, serial: 35 }],
+            prize: [],
+          }, {
+            active: [{
+              id: 722,
+              serial: 6,
+              hp: 70,
+              maxHp: 70,
+              energyCards: [],
+            }],
+            bench: [],
+            benchMax: 5,
+            handCount: 0,
+            deckCount: 53,
+            discard: [{ id: 3, serial: 70 }],
+            prize: [],
+          }],
+        },
+      }],
+    });
+
+    const step = snapshot.steps[1];
+    expect(step.actionTimeline?.map((event) => event.kind)).toEqual(['Play', 'MoveCard']);
+    expect(step.animationPhases?.map((phase) => phase.key)).toEqual(['Play:0', 'AttachedMove:1:8->3']);
+    expect(step.animationPhases?.[1].view.players[0].playZone.map((card) => card.serial)).toEqual([35]);
+    expect(step.animationPhases?.[1].view.players[0].discard).toHaveLength(0);
+    expect(step.animationPhases?.[1].view.players[1].active.energy.map((card) => card.serial)).toEqual([70]);
+    expect(step.displayView?.players[0].playZone).toHaveLength(0);
+    expect(step.displayView?.players[0].discard.map((card) => card.serial)).toEqual([35]);
+    expect(snapshot.views[step.stateIndex].players[1].discard.map((card) => card.serial)).toEqual([70]);
   });
 
   it('holds the pre-evolution board state while an evolution animation resolves', () => {
@@ -1909,8 +2291,96 @@ describe('cabtReplayToSnapshot', () => {
     expect(step.animationPhases?.[3].view.players[1].bench[0].pokemon?.serial).toBe(99);
     expect(step.animationPhases?.[3].view.players[1].bench[0].damage).toBe(0);
     expect(snapshot.views[step.stateIndex].players[1].active.empty).toBe(true);
-    expect(snapshot.views[step.stateIndex].players[1].discard.map((card) => card.serial)).toEqual([96, 64]);
-    expect(snapshot.views[step.stateIndex].players[1].discard.at(-1)?.serial).toBe(64);
+    expect(snapshot.views[step.stateIndex].players[1].discard.map((card) => card.serial)).toEqual([64, 96]);
+    expect(snapshot.views[step.stateIndex].players[1].discard.at(-1)?.serial).toBe(96);
+  });
+
+  it('does not let knockout discard presentation rewrite later discard piles', () => {
+    const snapshot = cabtReplayToSnapshot({
+      visualize: [{
+        current: {
+          turn: 3,
+          yourIndex: 0,
+          result: -1,
+          players: [{
+            active: [{ id: 723, serial: 13, hp: 350, maxHp: 350 }],
+            bench: [],
+            benchMax: 5,
+            handCount: 0,
+            deckCount: 45,
+            discard: [],
+            prize: [],
+          }, {
+            active: [{ id: 721, serial: 64, hp: 150, maxHp: 150 }],
+            bench: [],
+            benchMax: 5,
+            hand: [{ id: 1210, serial: 113 }],
+            deckCount: 46,
+            discard: [],
+            prize: [],
+          }],
+        },
+      }, {
+        logs: [
+          { type: 'Attack', playerIndex: 0, cardId: 723, serial: 13, attackId: 1046 },
+          { type: 'HpChange', playerIndex: 1, cardId: 721, serial: 64, value: -400, putDamageCounter: false },
+          { type: 'MoveCard', playerIndex: 1, cardId: 721, serial: 64, fromArea: CabtAreaType.ACTIVE, toArea: CabtAreaType.DISCARD },
+        ],
+        current: {
+          turn: 3,
+          yourIndex: 0,
+          result: -1,
+          players: [{
+            active: [{ id: 723, serial: 13, hp: 350, maxHp: 350 }],
+            bench: [],
+            benchMax: 5,
+            handCount: 0,
+            deckCount: 45,
+            discard: [],
+            prize: [],
+          }, {
+            active: [],
+            bench: [],
+            benchMax: 5,
+            hand: [{ id: 1210, serial: 113 }],
+            deckCount: 46,
+            discard: [{ id: 721, serial: 64 }],
+            prize: [],
+          }],
+        },
+      }, {
+        logs: [
+          { type: 'Play', playerIndex: 1, cardId: 1210, serial: 113 },
+        ],
+        current: {
+          turn: 3,
+          yourIndex: 0,
+          result: -1,
+          players: [{
+            active: [{ id: 723, serial: 13, hp: 350, maxHp: 350 }],
+            bench: [],
+            benchMax: 5,
+            handCount: 0,
+            deckCount: 45,
+            discard: [],
+            prize: [],
+          }, {
+            active: [],
+            bench: [],
+            benchMax: 5,
+            hand: [],
+            deckCount: 46,
+            discard: [{ id: 721, serial: 64 }, { id: 1210, serial: 113 }],
+            prize: [],
+          }],
+        },
+      }],
+    });
+
+    const playStep = snapshot.steps.find((step) => step.label === 'Player 2 played Brock’s Scouting.');
+    expect(playStep).toBeDefined();
+    expect(snapshot.views[playStep!.stateIndex].players[1].discard.map((card) => card.serial)).toEqual([64, 113]);
+    expect(snapshot.views[playStep!.stateIndex].players[1].discard.at(-1)?.serial).toBe(113);
   });
 
   it('holds attached energy in the source view while it moves to discard', () => {

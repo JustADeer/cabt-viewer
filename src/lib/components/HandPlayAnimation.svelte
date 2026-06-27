@@ -297,6 +297,9 @@
     if (event.kind === 'Play' && isPlayZoneCardTarget(target)) {
       return true;
     }
+    if (event.kind === 'Play' && isStadiumCardTarget(target)) {
+      return true;
+    }
     if (event.kind === 'MoveCard') {
       const toArea = Number(params?.toArea);
       return toArea === CabtAreaType.ACTIVE || toArea === CabtAreaType.BENCH;
@@ -312,6 +315,11 @@
   function isPlayZoneCardTarget(target: HTMLElement): boolean {
     return target.dataset.cardAnchor?.endsWith(':playZone') === true
       || target.closest('[data-card-anchor$=":playZone"]') instanceof HTMLElement;
+  }
+
+  function isStadiumCardTarget(target: HTMLElement): boolean {
+    return target.dataset.cardAnchor?.endsWith(':stadium') === true
+      || target.closest('[data-card-anchor$=":stadium"]') instanceof HTMLElement;
   }
 
   function activateTarget(animation: TargetAnimation) {
@@ -416,6 +424,9 @@
     }
 
     if (event.kind === 'Play') {
+      if (isStadiumCardId(cardId)) {
+        return stadiumTarget(playerIndex, serial);
+      }
       return playZoneTarget(playerIndex, serial)
         ?? discardTarget(playerIndex, serial)
         ?? boardSlotByPokemonIdentity(serial, cardId, playerIndex);
@@ -435,6 +446,23 @@
       }
     }
     return document.querySelector(`[data-card-anchor="player:${playerIndex}:playZone"]`);
+  }
+
+  function stadiumTarget(playerIndex: number | undefined, serial: number): HTMLElement | null {
+    if (playerIndex === undefined) {
+      return null;
+    }
+    if (Number.isFinite(serial)) {
+      const card = document.querySelector(`[data-card-anchor="player:${playerIndex}:stadium"][data-card-serial="${serial}"]`);
+      if (card instanceof HTMLElement) {
+        return card;
+      }
+    }
+    return document.querySelector(`[data-card-anchor="player:${playerIndex}:stadium"]`);
+  }
+
+  function isStadiumCardId(cardId: number): boolean {
+    return cabtCardToView(cardId).trainerType === 'Stadium';
   }
 
   function discardTarget(playerIndex: number | undefined, serial: number): HTMLElement | null {

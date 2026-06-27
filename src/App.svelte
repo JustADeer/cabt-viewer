@@ -401,8 +401,6 @@
   let retreatSource = $state<PokemonSlotView | null>(null);
   let selectedCard = $derived(selectedHand && game ? game.players[selectedHand.playerIndex]?.hand[selectedHand.handIndex] : undefined);
   let draggingCard = $derived(draggingHand && game ? game.players[draggingHand.playerIndex]?.hand[draggingHand.handIndex] : undefined);
-  let currentStadium = $derived(game ? game.players.flatMap((player) => player.stadium)[0] : undefined);
-  let currentStadiumOwner = $derived(game?.players.find((player) => player.stadium.length));
   let viewedCards = $derived(zoneViewerStore.cardsFor(game));
   let focusedPlayer = $derived(focusedSlot && game ? game.players[focusedSlot.ownerIndex] : undefined);
   let focusedIsActive = $derived(focusedSlot?.slot === 'active');
@@ -1358,8 +1356,6 @@
           {bottomBenchSlots}
           {topActiveSlot}
           {bottomActiveSlot}
-          {currentStadium}
-          {currentStadiumOwner}
           {canPlayToBenchArea}
           {canPlaceSetupBench}
           {playToBenchArea}

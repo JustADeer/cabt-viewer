@@ -30,6 +30,7 @@ const polishedMoveAreas = new Set([
   moveKey(CabtAreaType.TOOL, CabtAreaType.DISCARD),
   moveKey(CabtAreaType.TOOL, CabtAreaType.HAND),
   moveKey(CabtAreaType.TOOL, CabtAreaType.DECK),
+  moveKey(CabtAreaType.STADIUM, CabtAreaType.DISCARD),
   moveKey(CabtAreaType.ACTIVE, CabtAreaType.BENCH),
   moveKey(CabtAreaType.BENCH, CabtAreaType.ACTIVE),
   moveKey(CabtAreaType.ACTIVE, CabtAreaType.DISCARD),

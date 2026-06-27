@@ -19,6 +19,8 @@
   class="stadium-card"
   class:top-stadium-card={placement === 'top'}
   class:bottom-stadium-card={placement === 'bottom'}
+  data-card-anchor={`player:${owner.index}:stadium`}
+  data-card-serial={card.serial}
   title={card.fullName}
   onclick={() => showZone(owner.index, 'stadium', `${owner.name} stadium`)}
 >

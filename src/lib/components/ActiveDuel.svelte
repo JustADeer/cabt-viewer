@@ -1,7 +1,7 @@
 <script lang="ts">
   import BoardSlot from './BoardSlot.svelte';
   import StadiumCard from './StadiumCard.svelte';
-  import type { CardView, PlayerView, PokemonSlotView } from '../game/types';
+  import type { PlayerView, PokemonSlotView } from '../game/types';
 
   type ZoneName = 'discard' | 'lostZone' | 'stadium' | 'playZone';
 
@@ -10,8 +10,6 @@
     bottomPlayer: PlayerView;
     topActiveSlot: PokemonSlotView;
     bottomActiveSlot: PokemonSlotView;
-    currentStadium?: CardView;
-    currentStadiumOwner?: PlayerView;
     isPlayableTarget: (slot: PokemonSlotView) => boolean;
     isBoardPromptSelectable: (slot: PokemonSlotView) => boolean;
     isBoardPromptSelected: (slot: PokemonSlotView) => boolean;
@@ -30,8 +28,6 @@
     bottomPlayer,
     topActiveSlot,
     bottomActiveSlot,
-    currentStadium,
-    currentStadiumOwner,
     isPlayableTarget,
     isBoardPromptSelectable,
     isBoardPromptSelected,
@@ -52,6 +48,9 @@
     }
     clickSlot(slot);
   }
+
+  let topStadium = $derived(topPlayer.stadium.at(-1));
+  let bottomStadium = $derived(bottomPlayer.stadium.at(-1));
 </script>
 
 <div class="active-duel">
@@ -69,8 +68,8 @@
     evolutionChromeIn={slotHasCompletedEvolution(topPlayer.active)}
   />
 
-  {#if currentStadium && currentStadiumOwner?.index === topPlayer.index}
-    <StadiumCard card={currentStadium} owner={topPlayer} placement="top" {showZone} />
+  {#if topStadium}
+    <StadiumCard card={topStadium} owner={topPlayer} placement="top" {showZone} />
   {/if}
 
   <BoardSlot
@@ -87,8 +86,8 @@
     evolutionChromeIn={slotHasCompletedEvolution(bottomPlayer.active)}
   />
 
-  {#if currentStadium && currentStadiumOwner?.index === bottomPlayer.index}
-    <StadiumCard card={currentStadium} owner={bottomPlayer} placement="bottom" {showZone} />
+  {#if bottomStadium}
+    <StadiumCard card={bottomStadium} owner={bottomPlayer} placement="bottom" {showZone} />
   {/if}
 </div>
 

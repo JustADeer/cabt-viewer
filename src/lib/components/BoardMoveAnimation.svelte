@@ -25,6 +25,9 @@
     startScale: number;
     correctionX: number;
     correctionY: number;
+    destinationCardId: number;
+    destinationSerial?: number;
+    waitForDestinationCard: boolean;
     opponentSide: boolean;
     delayMs: number;
     measuring: boolean;
@@ -35,6 +38,8 @@
     source: HTMLElement;
     target: HTMLElement;
     cardId: number;
+    serial?: number;
+    waitForDestinationCard: boolean;
     key: string;
   };
 
@@ -128,6 +133,9 @@
         startScale: sourceRect.width / targetRect.width,
         correctionX: 0,
         correctionY: 0,
+        destinationCardId: instruction.cardId,
+        destinationSerial: instruction.serial,
+        waitForDestinationCard: instruction.waitForDestinationCard,
         opponentSide: isOpponentSide(sourceElement) || isOpponentSide(targetElement),
         delayMs,
         measuring: true,
@@ -175,6 +183,7 @@
         && (
           (fromArea === CabtAreaType.BENCH && toArea === CabtAreaType.ACTIVE)
           || (fromArea === CabtAreaType.ACTIVE && toArea === CabtAreaType.BENCH)
+          || (fromArea === CabtAreaType.STADIUM && toArea === CabtAreaType.DISCARD)
         )
       );
   }
@@ -196,6 +205,8 @@
       source,
       target,
       cardId,
+      serial: Number.isFinite(Number(params?.serial)) ? Number(params?.serial) : undefined,
+      waitForDestinationCard: Number(params?.toArea) === CabtAreaType.DISCARD,
       key: `${params?.serial ?? cardId}`,
     }];
   }
@@ -215,6 +226,8 @@
         source: activeSource,
         target: benchSource,
         cardId: activeCardId,
+        serial: Number.isFinite(Number(params?.serialActive)) ? Number(params?.serialActive) : undefined,
+        waitForDestinationCard: false,
         key: `active-${params?.serialActive ?? activeCardId}`,
       },
       {
@@ -222,6 +235,8 @@
         source: benchSource,
         target: activeSource,
         cardId: benchCardId,
+        serial: Number.isFinite(Number(params?.serialBench)) ? Number(params?.serialBench) : undefined,
+        waitForDestinationCard: false,
         key: `bench-${params?.serialBench ?? benchCardId}`,
       },
     ];
@@ -229,6 +244,10 @@
 
   function sourceElementForEvent(event: ActionTimelineEvent): HTMLElement | null {
     const params = event.params as Record<string, unknown> | undefined;
+    if (Number(params?.fromArea) === CabtAreaType.STADIUM && event.playerIndex !== undefined) {
+      const stadium = document.querySelector(`[data-card-anchor="player:${event.playerIndex}:stadium"][data-card-serial="${Number(params?.serial)}"]`);
+      return stadium instanceof HTMLElement ? stadium : null;
+    }
     const cardId = Number(params?.cardId);
     return pokemonElementForIdentity(Number(params?.serial), cardId, event.playerIndex);
   }
@@ -249,6 +268,10 @@
         return boardAnchor(playerIndex, 'bench', benchIndex);
       }
       return pairedBenchSourceElement(event, moveEvents);
+    }
+    if (toArea === CabtAreaType.DISCARD && Number(params?.fromArea) === CabtAreaType.STADIUM) {
+      const discard = document.querySelector(`[data-card-anchor="player:${playerIndex}:discard"]`);
+      return discard instanceof HTMLElement ? discard : null;
     }
     return null;
   }
@@ -292,7 +315,7 @@
   }
 
   function isOpponentSide(slotElement: HTMLElement): boolean {
-    return !!slotElement.closest('.top-active-slot, .bench-row.opponent');
+    return !!slotElement.closest('.top-active-slot, .bench-row.opponent, .top-stadium-card');
   }
 
   function localElementRect(element: HTMLElement, root: HTMLElement) {
@@ -348,6 +371,11 @@
       return source.outerHTML;
     }
 
+    if (source.classList.contains('stadium-card')) {
+      const cardTile = source.querySelector('.card-tile');
+      return cardTile instanceof HTMLElement ? cardTile.outerHTML : source.outerHTML;
+    }
+
     clone.className = target.className;
     clone.classList.remove('empty');
     clone.classList.add('board-slot');
@@ -370,7 +398,9 @@
     sprite: BoardMoveSprite,
     startTime: number,
   ) {
-    const destinationReady = !!target.querySelector('.card-tile');
+    const destinationReady = sprite.waitForDestinationCard
+      ? destinationContainsCard(target, sprite)
+      : !!target.querySelector('.card-tile');
     const timedOut = Date.now() - startTime >= boardMoveHandoffMaxWaitMs;
     const detached = !document.body.contains(source) || !document.body.contains(target);
     if (destinationReady || timedOut || detached) {
@@ -384,6 +414,13 @@
       handOffWhenDestinationReady(source, target, sprite, startTime);
     }, boardMoveHandoffPollMs);
     timers.push(retry);
+  }
+
+  function destinationContainsCard(target: HTMLElement, sprite: BoardMoveSprite) {
+    const selector = sprite.destinationSerial !== undefined
+      ? `.card-tile[data-card-serial="${sprite.destinationSerial}"]`
+      : `.card-tile[data-card-id="${sprite.destinationCardId}"]`;
+    return !!target.querySelector(selector);
   }
 
   function spriteStyle(sprite: BoardMoveSprite) {
@@ -526,6 +563,10 @@
   :global(.board-slot[data-board-move-animation-hidden="true"] > .tool-card-preview),
   :global(.board-slot[data-board-move-animation-hidden="true"] > .slot-badges),
   :global(.board-slot[data-board-move-animation-hidden="true"] > .empty-zone) {
+    opacity: 0;
+  }
+
+  :global(.stadium-card[data-board-move-animation-hidden="true"]) {
     opacity: 0;
   }
 

@@ -4,7 +4,7 @@
   import BoardMoveAnimation from './BoardMoveAnimation.svelte';
   import CenterPiles from './CenterPiles.svelte';
   import DeckPrizeAnimation from './DeckPrizeAnimation.svelte';
-  import type { ActionTimelineEvent, CardView, PlayerView, PokemonSlotView } from '../game/types';
+  import type { ActionTimelineEvent, PlayerView, PokemonSlotView } from '../game/types';
 
   type ZoneName = 'discard' | 'lostZone' | 'stadium' | 'playZone';
 
@@ -15,8 +15,6 @@
     bottomBenchSlots?: PokemonSlotView[];
     topActiveSlot: PokemonSlotView;
     bottomActiveSlot: PokemonSlotView;
-    currentStadium?: CardView;
-    currentStadiumOwner?: PlayerView;
     canPlayToBenchArea: (player: PlayerView) => boolean;
     canPlaceSetupBench: (player: PlayerView) => boolean;
     playToBenchArea: (player: PlayerView) => void;
@@ -54,8 +52,6 @@
     bottomBenchSlots = [],
     topActiveSlot,
     bottomActiveSlot,
-    currentStadium,
-    currentStadiumOwner,
     canPlayToBenchArea,
     canPlaceSetupBench,
     playToBenchArea,
@@ -242,8 +238,6 @@
       {bottomPlayer}
       {topActiveSlot}
       {bottomActiveSlot}
-      {currentStadium}
-      {currentStadiumOwner}
       {isPlayableTarget}
       {isBoardPromptSelectable}
       {isBoardPromptSelected}

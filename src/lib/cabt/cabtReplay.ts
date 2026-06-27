@@ -198,7 +198,7 @@ export function cabtReplayToSnapshot(input: unknown): ReplaySnapshot {
   }
 
   applyResolvingPlayedCards(steps, views);
-  applyKnockOutDiscardTopOrdering(steps, views);
+  applyKnockOutDiscardTopOrdering(steps);
 
   steps.forEach((step, index) => {
     step.index = index;
@@ -245,8 +245,13 @@ function cardEffectContinuation(entries: ReplayFrameEntry[], startIndex: number)
   if (!firstGroup || entries[startIndex].groups.length !== 1 || !isCardEffectStartGroup(firstGroup)) {
     return null;
   }
-  const playerIndex = firstGroup.events.find((event) => event.kind === 'Play')?.playerIndex;
-  if (playerIndex === undefined) {
+  const playEvent = resolvingTrainerPlayEvent(firstGroup);
+  const playerIndex = playEvent?.playerIndex;
+  if (!playEvent || playerIndex === undefined) {
+    return null;
+  }
+
+  if (startGroupHasTerminalResolvingEffect(firstGroup)) {
     return null;
   }
 
@@ -257,6 +262,11 @@ function cardEffectContinuation(entries: ReplayFrameEntry[], startIndex: number)
   const deckSearchContinuation = deckSearchContinuationFrom(entries, startIndex, firstGroup, playerIndex);
   if (deckSearchContinuation) {
     return deckSearchContinuation;
+  }
+
+  const resolvingContinuation = resolvingTrainerContinuationFrom(entries, startIndex, firstGroup, playEvent);
+  if (resolvingContinuation) {
+    return resolvingContinuation;
   }
 
   for (let index = startIndex + 1; index < entries.length; index += 1) {
@@ -279,11 +289,155 @@ function cardEffectContinuation(entries: ReplayFrameEntry[], startIndex: number)
 }
 
 function isCardEffectStartGroup(group: ReplayActionGroup): boolean {
-  const playerIndex = group.events.find((event) => event.kind === 'Play')?.playerIndex;
+  return !!resolvingTrainerPlayEvent(group);
+}
+
+function resolvingTrainerPlayEvent(group: ReplayActionGroup): ActionTimelineEvent | undefined {
+  return group.events.find((event) => {
+    const params = event.params as Record<string, unknown> | undefined;
+    const cardId = Number(params?.cardId);
+    return event.kind === 'Play'
+      && event.playerIndex !== undefined
+      && Number.isFinite(cardId)
+      && isResolvingTrainerCard(cardId);
+  });
+}
+
+function resolvingTrainerContinuationFrom(
+  entries: ReplayFrameEntry[],
+  startIndex: number,
+  startGroup: ReplayActionGroup,
+  playEvent: ActionTimelineEvent,
+): CardEffectContinuation | null {
+  const playerIndex = playEvent.playerIndex;
+  if (playerIndex === undefined) {
+    return null;
+  }
+
+  const continuationEvents: ActionTimelineEvent[] = [];
+  for (let index = startIndex + 1; index < entries.length; index += 1) {
+    const groups = entries[index].groups;
+    if (!groups.length) {
+      continue;
+    }
+    const cardIsDiscardedInView = viewHasEventCardInDiscard(entries[index].view, playEvent);
+    if (groups.length !== 1 || !isResolvingTrainerContinuationGroup(groups[0])) {
+      return null;
+    }
+
+    const nextEvents = [...continuationEvents, ...groups[0].events];
+    if (
+      groupHasDeckSearchStyleMove(groups[0])
+      && !cardIsDiscardedInView
+      && !isResolvingTrainerTerminalGroup(groups[0], nextEvents)
+    ) {
+      return null;
+    }
+
+    continuationEvents.push(...groups[0].events);
+    if (cardIsDiscardedInView || isResolvingTrainerTerminalGroup(groups[0], continuationEvents)) {
+      return {
+        endIndex: index,
+        group: {
+          ...startGroup,
+          events: [...startGroup.events, ...continuationEvents],
+        },
+      };
+    }
+  }
+  return null;
+}
+
+function startGroupHasTerminalResolvingEffect(group: ReplayActionGroup): boolean {
+  return group.events.some((event) => event.kind !== 'Play')
+    && isResolvingTrainerTerminalGroup(group, group.events);
+}
+
+function isResolvingTrainerTerminalGroup(group: ReplayActionGroup, continuationEvents: ActionTimelineEvent[]): boolean {
+  if (group.events.some((event) => ['Draw', 'DrawReverse', 'Switch', 'Evolve', 'Devolve', 'Attach'].includes(event.kind ?? ''))) {
+    return true;
+  }
+  if (group.events.some((event) => ['HpChange', 'HPChange', 'Poisoned', 'Burned', 'Asleep', 'Paralyzed', 'Confused', 'Coin'].includes(event.kind ?? ''))) {
+    return true;
+  }
+  if (group.events.some(isTerminalResolvingMoveEvent)) {
+    return true;
+  }
+  if (group.events.some((event) => event.kind === 'Shuffle')) {
+    return !continuationEvents.some((event) => isMoveBetween(event, CabtAreaType.HAND, CabtAreaType.DECK));
+  }
+  return false;
+}
+
+function isTerminalResolvingMoveEvent(event: ActionTimelineEvent): boolean {
+  const params = event.params as Record<string, unknown> | undefined;
+  const fromArea = Number(params?.fromArea);
+  const toArea = Number(params?.toArea);
+  return isMoveCardKind(event.kind)
+    && (
+      toArea === CabtAreaType.DISCARD
+      || isBoardPositionMove(fromArea, toArea)
+      || isAttachedCardArea(fromArea)
+    );
+}
+
+function isResolvingTrainerContinuationGroup(group: ReplayActionGroup): boolean {
+  return group.events.length > 0
+    && group.events.every(isResolvingTrainerContinuationEvent);
+}
+
+function isResolvingTrainerContinuationEvent(event: ActionTimelineEvent): boolean {
+  if (isMoveCardKind(event.kind)) {
+    return true;
+  }
+  return [
+    'Attach',
+    'Evolve',
+    'Devolve',
+    'Switch',
+    'Draw',
+    'DrawReverse',
+    'Shuffle',
+    'HpChange',
+    'HPChange',
+    'Poisoned',
+    'Burned',
+    'Asleep',
+    'Paralyzed',
+    'Confused',
+    'Coin',
+  ].includes(event.kind ?? '');
+}
+
+function groupHasDeckSearchStyleMove(group: ReplayActionGroup): boolean {
+  return group.events.some(isDeckSearchStyleMove);
+}
+
+function isDeckSearchStyleMove(event: ActionTimelineEvent): boolean {
+  if (!isMoveCardKind(event.kind)) {
+    return false;
+  }
+  const params = event.params as Record<string, unknown> | undefined;
+  const fromArea = Number(params?.fromArea);
+  const toArea = Number(params?.toArea);
+  return (fromArea === CabtAreaType.DECK && (
+    toArea === CabtAreaType.HAND
+    || toArea === CabtAreaType.ACTIVE
+    || toArea === CabtAreaType.BENCH
+    || toArea === CabtAreaType.LOOKING
+  ))
+    || (fromArea === CabtAreaType.LOOKING && (
+      toArea === CabtAreaType.HAND
+      || toArea === CabtAreaType.DECK
+    ));
+}
+
+function viewHasEventCardInDiscard(view: GameView, event: ActionTimelineEvent): boolean {
+  const playerIndex = event.playerIndex;
   if (playerIndex === undefined) {
     return false;
   }
-  return group.events.some((event) => event.kind === 'Play');
+  return view.players[playerIndex]?.discard.some((card) => eventCardMatches(card, event)) ?? false;
 }
 
 function deckSearchContinuationFrom(
@@ -993,6 +1147,9 @@ function animationPhaseKey(event: ActionTimelineEvent): string | null {
     if (isAttachedCardArea(fromArea) && isAttachedCardMoveDestination(toArea)) {
       return `AttachedMove:${playerKey}:${fromArea}->${toArea}`;
     }
+    if (fromArea === CabtAreaType.STADIUM && toArea === CabtAreaType.DISCARD) {
+      return `StadiumMove:${playerKey}:${fromArea}->${toArea}`;
+    }
   }
   if (event.kind === 'Shuffle') {
     return `Shuffle:${playerKey}`;
@@ -1010,7 +1167,8 @@ function animationPhaseUsesSourceView(key: string): boolean {
     || key.startsWith('Damage:')
     || key.startsWith('KnockOut:')
     || key.startsWith('BoardMove:')
-    || key.startsWith('AttachedMove:');
+    || key.startsWith('AttachedMove:')
+    || key.startsWith('StadiumMove:');
 }
 
 function animationPhaseNeedsDedicatedView(phase: AnimationEventPhase): boolean {
@@ -1019,7 +1177,8 @@ function animationPhaseNeedsDedicatedView(phase: AnimationEventPhase): boolean {
     || phase.key.startsWith('Damage:')
     || phase.key.startsWith('KnockOut:')
     || phase.key.startsWith('BoardMove:')
-    || phase.key.startsWith('AttachedMove:');
+    || phase.key.startsWith('AttachedMove:')
+    || phase.key.startsWith('StadiumMove:');
 }
 
 function animationSourceViewForPhase(
@@ -1047,6 +1206,9 @@ function animationSourceViewForPhase(
     );
   }
   if (phase.key.startsWith('AttachedMove:')) {
+    return projectedViewForEvents(phaseStartView, currentView, phase.events, { deferMoveCardEvents: true });
+  }
+  if (phase.key.startsWith('StadiumMove:')) {
     return projectedViewForEvents(phaseStartView, currentView, phase.events, { deferMoveCardEvents: true });
   }
   return phaseStartView;
@@ -1111,6 +1273,9 @@ function animationPhaseCardDurationMs(key: string): number {
   if (key.startsWith('AttachedMove:')) {
     return actionAnimationTiming.handMoveMs;
   }
+  if (key.startsWith('StadiumMove:')) {
+    return actionAnimationTiming.stadiumMoveMs;
+  }
   if (key.startsWith('Evolve:')) {
     return actionAnimationTiming.evolveMs;
   }
@@ -1154,6 +1319,9 @@ function animationPhaseStepMs(key: string): number {
   if (key.startsWith('AttachedMove:')) {
     return actionAnimationTiming.handMoveStepMs;
   }
+  if (key.startsWith('StadiumMove:')) {
+    return actionAnimationTiming.handMoveStepMs;
+  }
   if (key.startsWith('Shuffle:')) {
     return actionAnimationTiming.deckShuffleMs;
   }
@@ -1190,6 +1358,7 @@ function projectedViewForEvents(
         active: basePlayer.active,
         bench: basePlayer.bench,
         discard: basePlayer.discard,
+        stadium: basePlayer.stadium,
         playZone: basePlayer.playZone,
       };
     }),
@@ -1222,8 +1391,15 @@ function applyResolvingPlayedCards(steps: ReplayStep[], views: GameView[]): void
       }
     }
 
-    const displayResolving = resolving.filter((entry) => shouldShowResolvingCardInDisplay(step, baseView, entry));
+    const displayResolved = resolving.filter((entry) => shouldResolveCardInDisplay(step, entry));
+    const displayResolving = resolving.filter((entry) =>
+      !displayResolved.some((resolvedEntry) => sameResolvingCard(resolvedEntry, entry))
+      && shouldShowResolvingCardInDisplay(step, baseView, entry));
     const phaseResolving = resolving.filter((entry) => shouldShowResolvingCardInPhase(step, baseView, entry));
+    if (displayResolved.length) {
+      const view = step.displayView ?? baseView;
+      step.displayView = gameViewWithResolvedDiscards(view, displayResolved);
+    }
     if (displayResolving.length) {
       const view = step.displayView ?? baseView;
       step.displayView = gameViewWithResolvingCards(view, displayResolving);
@@ -1243,6 +1419,9 @@ function applyResolvingPlayedCards(steps: ReplayStep[], views: GameView[]): void
       if (playerHasDiscardCard(baseView.players[entry.playerIndex], entry.card)) {
         return [];
       }
+      if (displayResolved.some((resolvedEntry) => sameResolvingCard(resolvedEntry, entry))) {
+        return [];
+      }
       if (stepContainsPlayForCard(step, entry.card)) {
         return [entry];
       }
@@ -1251,53 +1430,51 @@ function applyResolvingPlayedCards(steps: ReplayStep[], views: GameView[]): void
   }
 }
 
-function applyKnockOutDiscardTopOrdering(steps: ReplayStep[], views: GameView[]): void {
-  for (const [stepIndex, step] of steps.entries()) {
+function applyKnockOutDiscardTopOrdering(steps: ReplayStep[]): void {
+  for (const step of steps) {
     const knockOutEvents = (step.actionTimeline ?? []).filter(isKnockOutEvent);
     if (!knockOutEvents.length) {
       continue;
     }
 
-    for (const event of knockOutEvents) {
-      const playerIndex = event.playerIndex;
-      if (playerIndex === undefined) {
-        continue;
-      }
-      const nextDiscardStateIndex = nextDiscardStateIndexForPlayer(steps, stepIndex, playerIndex);
-      const endStateIndex = nextDiscardStateIndex ?? views.length;
-      for (let viewIndex = step.stateIndex; viewIndex < endStateIndex; viewIndex += 1) {
-        promoteDiscardCardToTop(views[viewIndex], event);
-      }
+    if (step.displayView) {
+      step.displayView = gameViewWithPromotedDiscardCards(step.displayView, knockOutEvents);
+    }
+    if (step.animationPhases?.length) {
+      step.animationPhases = step.animationPhases.map((phase) => {
+        if (!phase.key.startsWith('KnockOut:')) {
+          return phase;
+        }
+        return {
+          ...phase,
+          view: gameViewWithPromotedDiscardCards(phase.view, phase.actionTimeline.filter(isKnockOutEvent)),
+        };
+      });
     }
   }
 }
 
-function nextDiscardStateIndexForPlayer(steps: ReplayStep[], afterStepIndex: number, playerIndex: number): number | undefined {
-  for (let index = afterStepIndex + 1; index < steps.length; index += 1) {
-    const step = steps[index];
-    if (
-      step.stateIndex > steps[afterStepIndex].stateIndex
-      && (step.actionTimeline ?? []).some((event) => event.playerIndex === playerIndex && movesToDiscard(event))
-    ) {
-      return step.stateIndex;
-    }
-  }
-  return undefined;
+function gameViewWithPromotedDiscardCards(view: GameView, events: ActionTimelineEvent[]): GameView {
+  return {
+    ...view,
+    players: view.players.map((player, playerIndex) => {
+      const playerEvents = events.filter((event) => event.playerIndex === playerIndex);
+      if (!playerEvents.length) {
+        return player;
+      }
+      return playerEvents.reduce(promoteDiscardCardToTop, player);
+    }),
+  };
 }
 
-function promoteDiscardCardToTop(view: GameView | undefined, event: ActionTimelineEvent): void {
-  const playerIndex = event.playerIndex;
-  if (playerIndex === undefined || !view?.players[playerIndex]) {
-    return;
-  }
-  const player = view.players[playerIndex];
+function promoteDiscardCardToTop(player: PlayerView, event: ActionTimelineEvent): PlayerView {
   const cardIndex = player.discard.findIndex((card) => eventCardMatches(card, event));
   if (cardIndex < 0 || cardIndex === player.discard.length - 1) {
-    return;
+    return player;
   }
   const discard = [...player.discard];
   const [card] = discard.splice(cardIndex, 1);
-  view.players[playerIndex] = {
+  return {
     ...player,
     discard: [...discard, card],
   };
@@ -1344,6 +1521,37 @@ function gameViewWithResolvingCards(view: GameView, resolving: ResolvingPlayedCa
       };
     }),
   };
+}
+
+function gameViewWithResolvedDiscards(view: GameView, resolving: ResolvingPlayedCard[]): GameView {
+  const cardsByPlayer = new Map<number, CardView[]>();
+  for (const entry of resolving) {
+    const cards = cardsByPlayer.get(entry.playerIndex) ?? [];
+    cardsByPlayer.set(entry.playerIndex, [...cards, entry.card]);
+  }
+
+  return {
+    ...view,
+    players: view.players.map((player, playerIndex) => {
+      const resolvedCards = cardsByPlayer.get(playerIndex) ?? [];
+      if (!resolvedCards.length) {
+        return player;
+      }
+      return {
+        ...player,
+        playZone: player.playZone.filter((playZoneCard) => !resolvedCards.some((card) => sameKnownCard(playZoneCard, card))),
+        discard: [
+          ...player.discard.filter((discardCard) => !resolvedCards.some((card) => sameKnownCard(discardCard, card))),
+          ...resolvedCards,
+        ],
+      };
+    }),
+  };
+}
+
+function shouldResolveCardInDisplay(step: ReplayStep, entry: ResolvingPlayedCard): boolean {
+  return !!step.animationPhases?.length
+    && (stepContainsPlayForCard(step, entry.card) || isCardEffectContinuationStep(step));
 }
 
 function shouldShowResolvingCardInDisplay(step: ReplayStep, baseView: GameView, entry: ResolvingPlayedCard): boolean {
@@ -1505,11 +1713,6 @@ function isKnockOutEvent(event: ActionTimelineEvent): boolean {
     && isKnockOutMove(Number(params?.fromArea), Number(params?.toArea));
 }
 
-function movesToDiscard(event: ActionTimelineEvent): boolean {
-  const params = event.params as Record<string, unknown> | undefined;
-  return isMoveCardKind(event.kind) && Number(params?.toArea) === CabtAreaType.DISCARD;
-}
-
 function applyDamageReplayEvent(player: PlayerView, event: ActionTimelineEvent): boolean {
   const params = event.params as Record<string, unknown> | undefined;
   const serial = Number(params?.serial);
@@ -1587,10 +1790,30 @@ function applyReplayAreaDelta(
     player.discard = currentPlayer.discard;
     return;
   }
+  if (area === CabtAreaType.STADIUM) {
+    player.stadium = delta > 0 ? currentPlayer.stadium : removeMovedCardFromZone(player.stadium, event);
+    return;
+  }
   if (area === CabtAreaType.ENERGY || area === CabtAreaType.TOOL || area === CabtAreaType.PRE_EVOLUTION) {
     player.active = currentPlayer.active;
     player.bench = currentPlayer.bench;
   }
+}
+
+function removeMovedCardFromZone(cards: CardView[], event: ActionTimelineEvent | undefined): CardView[] {
+  const params = event?.params as Record<string, unknown> | undefined;
+  const serial = Number(params?.serial);
+  if (Number.isFinite(serial)) {
+    return cards.filter((card) => card.serial !== serial);
+  }
+
+  const cardId = Number(params?.cardId);
+  if (Number.isFinite(cardId)) {
+    const index = cards.findIndex((card) => card.id === cardId);
+    return index >= 0 ? removeAt(cards, index) : cards;
+  }
+
+  return cards.slice(0, -1);
 }
 
 function removeMovedCardFromHand(hand: CardView[], event: ActionTimelineEvent | undefined): CardView[] {
@@ -1735,8 +1958,9 @@ function frameToGameView(
 ): GameView {
   const current = frame.current;
   const activePlayerIndex = clampPlayerIndex(current.yourIndex);
+  const stadium = current.stadium ?? [];
   const players = current.players.map((player, index) =>
-    buildPlayerView(player, index, activePlayerIndex, playerNamesForReplay[index] ?? `Player ${index + 1}`, current.stadium ?? []),
+    buildPlayerView(player, index, activePlayerIndex, playerNamesForReplay[index] ?? `Player ${index + 1}`, stadiumForPlayer(stadium, index)),
   );
   return {
     ready: true,
@@ -1752,6 +1976,16 @@ function frameToGameView(
     actionTimeline,
     events: [frame],
   };
+}
+
+function stadiumForPlayer(stadium: CabtCardRef[], playerIndex: number): CabtCardRef[] {
+  const owned = stadium.filter((card) => card.playerIndex === playerIndex);
+  if (owned.length) {
+    return owned;
+  }
+  return playerIndex === 0
+    ? stadium.filter((card) => card.playerIndex === undefined || card.playerIndex === null)
+    : [];
 }
 
 function buildPlayerView(

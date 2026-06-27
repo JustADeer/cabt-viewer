@@ -13,6 +13,7 @@ export const actionAnimationTiming = {
   deckRevealStepMs: 45,
   deckRevealReturnMs: 420,
   deckRevealReturnStepMs: 35,
+  stadiumMoveMs: 520,
   prizeTakeMs: 1180,
   prizeTakeStepMs: 45,
   evolveMs: 680,
@@ -183,6 +184,13 @@ function animationPhaseForEvent(event: ActionTimelineEvent): AnimationPhase | nu
       return {
         key: `AttachedMove:${playerKey}:${fromArea}->${toArea}`,
         durationMs: actionAnimationTiming.handMoveMs,
+        stepMs: actionAnimationTiming.handMoveStepMs,
+      };
+    }
+    if (fromArea === CabtAreaType.STADIUM && toArea === CabtAreaType.DISCARD) {
+      return {
+        key: `StadiumMove:${playerKey}:${fromArea}->${toArea}`,
+        durationMs: actionAnimationTiming.stadiumMoveMs,
         stepMs: actionAnimationTiming.handMoveStepMs,
       };
     }
