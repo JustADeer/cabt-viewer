@@ -22,6 +22,11 @@ export type KaggleEpisodeSummary = {
   dailyRank: number;
 };
 
+export type KaggleEpisodeRatingRange = {
+  lower: number;
+  higher: number;
+};
+
 export async function loadKaggleEpisodeDays(fetcher: typeof fetch = fetch): Promise<KaggleEpisodeDay[]> {
   const csv = await fetchText(datasetFileUrl(EPISODE_INDEX_REF, 'manifest.csv'), fetcher);
   return parseKaggleEpisodeDays(csv);
@@ -34,6 +39,18 @@ export async function loadKaggleEpisodesForDay(slug: string, fetcher: typeof fet
 
 export function kaggleEpisodeReplayUrl(slug: string, episodeId: string): string {
   return datasetFileUrl(kaggleDatasetRef(slug), `${encodeURIComponent(episodeId)}.json`);
+}
+
+export function inferredKaggleEpisodeRatingRange(episode: KaggleEpisodeSummary): KaggleEpisodeRatingRange {
+  const lower = episode.minScore;
+  const higher = episode.sumScore - episode.minScore;
+  if (episode.agentCount !== 2 || !Number.isFinite(lower) || !Number.isFinite(higher)) {
+    return {
+      lower: episode.avgScore,
+      higher: episode.avgScore,
+    };
+  }
+  return { lower, higher };
 }
 
 export function parseKaggleEpisodeDays(csv: string): KaggleEpisodeDay[] {

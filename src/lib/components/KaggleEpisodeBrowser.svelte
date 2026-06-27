@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import {
+    inferredKaggleEpisodeRatingRange,
     loadKaggleEpisodeDays,
     loadKaggleEpisodesForDay,
     type KaggleEpisodeDay,
@@ -9,15 +10,26 @@
 
   type Props = {
     busy?: boolean;
+    initialSelectedEpisodeId?: string;
+    initialSelectedSlug?: string;
     openEpisode: (day: KaggleEpisodeDay, episode: KaggleEpisodeSummary) => void;
   };
 
   const largeReplayWarningBytes = 50 * 1024 * 1024;
+  const initialEpisodeRenderCount = 150;
+  const episodeRenderBatchSize = 150;
 
-  let { busy = false, openEpisode }: Props = $props();
+  let {
+    busy = false,
+    initialSelectedEpisodeId = '',
+    initialSelectedSlug = '',
+    openEpisode,
+  }: Props = $props();
   let days = $state<KaggleEpisodeDay[]>([]);
   let episodes = $state<KaggleEpisodeSummary[]>([]);
   let selectedSlug = $state('');
+  let selectedEpisodeId = $state('');
+  let selectedEpisodeSlug = $state('');
   let loadedSlug = $state('');
   let loadingDays = $state(false);
   let loadingEpisodes = $state(false);
@@ -25,9 +37,15 @@
   let minAvgScore = $state('');
   let maxSizeMb = $state('');
   let sortKey = $state<'rank' | 'score' | 'time' | 'size'>('rank');
+  let restoredInitialSelection = $state(false);
+  let visibleEpisodeCount = $state(initialEpisodeRenderCount);
+  let episodeRequestId = 0;
   let dayOptions = $derived(days.slice().sort((left, right) => right.date.localeCompare(left.date)));
   let selectedDay = $derived(dayOptions.find((day) => day.slug === selectedSlug));
   let filteredEpisodes = $derived(sortedEpisodes(episodes).filter(episodeVisible));
+  let visibleEpisodes = $derived(filteredEpisodes.slice(0, visibleEpisodeCount));
+  let hiddenEpisodeCount = $derived(Math.max(0, filteredEpisodes.length - visibleEpisodes.length));
+  let episodeListKey = $derived(`${selectedSlug}|${minAvgScore}|${maxSizeMb}|${sortKey}`);
   let loading = $derived(loadingDays || loadingEpisodes);
 
   onMount(() => {
@@ -35,10 +53,36 @@
   });
 
   $effect(() => {
+    if (restoredInitialSelection) {
+      return;
+    }
+    restoredInitialSelection = true;
+    if (initialSelectedSlug) {
+      selectedSlug = initialSelectedSlug;
+    }
+    if (initialSelectedEpisodeId) {
+      selectedEpisodeId = initialSelectedEpisodeId;
+      selectedEpisodeSlug = initialSelectedSlug;
+    }
+  });
+
+  $effect(() => {
     if (!selectedSlug || selectedSlug === loadedSlug) {
       return;
     }
     void refreshEpisodes(selectedSlug);
+  });
+
+  $effect(() => {
+    episodeListKey;
+    visibleEpisodeCount = initialEpisodeRenderCount;
+  });
+
+  $effect(() => {
+    if (selectedEpisodeId && selectedEpisodeSlug && selectedSlug !== selectedEpisodeSlug) {
+      selectedEpisodeId = '';
+      selectedEpisodeSlug = '';
+    }
   });
 
   async function refreshDays() {
@@ -59,34 +103,45 @@
   }
 
   async function refreshEpisodes(slug: string) {
+    const requestId = ++episodeRequestId;
     loadingEpisodes = true;
     error = '';
+    episodes = [];
+    loadedSlug = '';
     try {
-      episodes = await loadKaggleEpisodesForDay(slug);
+      const nextEpisodes = await loadKaggleEpisodesForDay(slug);
+      if (requestId !== episodeRequestId || selectedSlug !== slug) {
+        return;
+      }
+      episodes = nextEpisodes;
       loadedSlug = slug;
     } catch (reason) {
+      if (requestId !== episodeRequestId) {
+        return;
+      }
       error = reason instanceof Error ? reason.message : String(reason);
       episodes = [];
       loadedSlug = '';
     } finally {
-      loadingEpisodes = false;
+      if (requestId === episodeRequestId) {
+        loadingEpisodes = false;
+      }
     }
   }
 
   function reloadSelectedDay() {
     loadedSlug = '';
-    if (selectedSlug) {
-      void refreshEpisodes(selectedSlug);
-    }
   }
 
   function chooseEpisode(episode: KaggleEpisodeSummary) {
-    if (!selectedDay) {
+    if (!selectedDay || loadingEpisodes || selectedSlug !== loadedSlug) {
       return;
     }
     if (episode.sizeBytes >= largeReplayWarningBytes && !confirm(`Load ${formatBytes(episode.sizeBytes)} replay ${episode.episodeId}?`)) {
       return;
     }
+    selectedEpisodeId = episode.episodeId;
+    selectedEpisodeSlug = selectedDay.slug;
     openEpisode(selectedDay, episode);
   }
 
@@ -134,6 +189,14 @@
   function formatDateTime(value: string): string {
     return value.replace('T', ' ').replace(/\.\d+$/, '');
   }
+
+  function formatDate(value: string): string {
+    return formatDateTime(value).split(' ')[0] ?? '';
+  }
+
+  function formatTime(value: string): string {
+    return (formatDateTime(value).split(' ')[1] ?? '').replace(/:\d+$/, '');
+  }
 </script>
 
 <div class="kaggle-browser">
@@ -151,14 +214,14 @@
       <span>Sort</span>
       <select bind:value={sortKey}>
         <option value="rank">Rank</option>
-        <option value="score">Avg score</option>
+        <option value="score">Avg rating</option>
         <option value="time">Newest</option>
         <option value="size">Size</option>
       </select>
     </label>
 
     <label>
-      <span>Min score</span>
+      <span>Min avg</span>
       <input bind:value={minAvgScore} inputmode="decimal" placeholder="Any" />
     </label>
 
@@ -191,30 +254,80 @@
     <p class="empty">No episodes match the current filters.</p>
   {:else}
     <div class="episode-list">
-      {#each filteredEpisodes as episode}
-        <button type="button" disabled={busy} onclick={() => chooseEpisode(episode)}>
+      <div class="episode-header" aria-hidden="true">
+        <span>Rank</span>
+        <span>Match ID</span>
+        <span>Avg</span>
+        <span>High</span>
+        <span>Low</span>
+        <span>Gap</span>
+        <span>Date</span>
+        <span>Time</span>
+        <span>Size</span>
+      </div>
+      {#each visibleEpisodes as episode}
+        {@const ratingRange = inferredKaggleEpisodeRatingRange(episode)}
+        {@const ratingGap = Math.abs(ratingRange.higher - ratingRange.lower)}
+        <button
+          type="button"
+          aria-current={episode.episodeId === selectedEpisodeId ? 'true' : undefined}
+          class:selected={episode.episodeId === selectedEpisodeId}
+          disabled={busy || loadingEpisodes || selectedSlug !== loadedSlug}
+          onclick={() => chooseEpisode(episode)}
+        >
           <span class="rank">#{episode.dailyRank}</span>
-          <span>
+          <span class="episode-main">
             <strong>{episode.episodeId}</strong>
-            <small>{formatDateTime(episode.createTime)}</small>
           </span>
-          <span>
-            <small>Avg {formatScore(episode.avgScore)}</small>
-            <small>Min {formatScore(episode.minScore)}</small>
+          <span class="episode-avg metric">
+            <small>Avg</small>
+            <strong>{formatScore(episode.avgScore)}</strong>
           </span>
-          <span>
-            <small>{formatBytes(episode.sizeBytes)}</small>
-            <small>{episode.agentCount} agents</small>
+          <span class="episode-rating-high metric">
+            <small>High</small>
+            <strong>{formatScore(ratingRange.higher)}</strong>
+          </span>
+          <span class="episode-rating-low metric">
+            <small>Low</small>
+            <strong>{formatScore(ratingRange.lower)}</strong>
+          </span>
+          <span class="episode-gap metric">
+            <small>Gap</small>
+            <strong>{formatScore(ratingGap)}</strong>
+          </span>
+          <span class="episode-date">
+            <small>Date</small>
+            <strong>{formatDate(episode.createTime)}</strong>
+          </span>
+          <span class="episode-time">
+            <small>Time</small>
+            <strong>{formatTime(episode.createTime)}</strong>
+          </span>
+          <span class="episode-size">
+            <small>Size</small>
+            <strong>{formatBytes(episode.sizeBytes)}</strong>
           </span>
         </button>
       {/each}
     </div>
+    {#if hiddenEpisodeCount > 0}
+      <button
+        class="show-more"
+        type="button"
+        onclick={() => {
+          visibleEpisodeCount += episodeRenderBatchSize;
+        }}
+      >
+        Show {Math.min(episodeRenderBatchSize, hiddenEpisodeCount).toLocaleString()} more of {filteredEpisodes.length.toLocaleString()}
+      </button>
+    {/if}
   {/if}
 </div>
 
 <style>
   .kaggle-browser {
     display: grid;
+    min-width: 0;
     gap: 12px;
   }
 
@@ -263,27 +376,90 @@
   }
 
   .episode-list {
+    --episode-table-columns: 64px minmax(116px, 1.3fr) minmax(82px, 0.7fr) minmax(92px, 0.8fr) minmax(92px, 0.8fr) minmax(82px, 0.7fr) minmax(116px, 0.95fr) minmax(78px, 0.65fr) minmax(92px, 0.75fr);
     display: grid;
-    gap: 8px;
-    max-height: min(68vh, 760px);
-    overflow: auto;
+    justify-self: center;
+    width: min(100%, 1120px);
+    min-width: 0;
+    align-content: start;
+    gap: 0;
+  }
+
+  .episode-header,
+  .episode-list button {
+    display: grid;
+    grid-template-columns: var(--episode-table-columns);
+    gap: 0;
+    align-items: center;
+  }
+
+  .episode-header {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    min-height: 30px;
+    border: 1px solid var(--surface-toolbar-border);
+    border-radius: 8px 8px 0 0;
+    background: var(--app-bg);
+    color: var(--text-secondary);
+    font-size: 11px;
+    font-weight: 900;
+    text-transform: uppercase;
   }
 
   .episode-list button {
-    display: grid;
-    grid-template-columns: 58px minmax(0, 1fr) minmax(105px, auto) minmax(95px, auto);
-    gap: 12px;
-    align-items: center;
-    min-height: 62px;
-    border-radius: 8px;
+    position: relative;
+    padding: 0;
+    min-height: 54px;
+    border-color: var(--surface-inset-border);
+    border-top: 0;
+    border-radius: 0;
     text-align: left;
     background: var(--button-bg);
   }
 
+  .episode-list button:last-child {
+    border-radius: 0 0 8px 8px;
+  }
+
+  .episode-list button.selected {
+    z-index: 2;
+  }
+
+  .episode-list button:hover:not(:disabled) {
+    z-index: 3;
+    border-color: var(--surface-inset-border);
+  }
+
+  .episode-list button::after {
+    content: '';
+    position: absolute;
+    inset: -1px;
+    pointer-events: none;
+    border: 2px solid transparent;
+    border-radius: inherit;
+  }
+
+  .episode-list button.selected::after {
+    border-color: var(--accent-base);
+  }
+
+  .episode-list button:hover:not(:disabled)::after {
+    border-color: var(--button-hover-border);
+  }
+
   .episode-list span {
     display: grid;
+    align-content: center;
+    align-self: stretch;
     min-width: 0;
     gap: 2px;
+    padding: 0 10px;
+  }
+
+  .episode-header span + span,
+  .episode-list button span + span {
+    border-left: 1px solid var(--surface-inset-border);
   }
 
   .episode-list strong,
@@ -294,15 +470,41 @@
     white-space: nowrap;
   }
 
+  .episode-list strong {
+    font-size: 13px;
+  }
+
   .episode-list small {
     color: var(--text-secondary);
-    font-size: 12px;
+    font-size: 11px;
+  }
+
+  .metric small,
+  .episode-date small,
+  .episode-time small,
+  .episode-size small {
+    display: none;
   }
 
   .rank {
     color: var(--text-primary);
     font-weight: 900;
     font-variant-numeric: tabular-nums;
+  }
+
+  .metric,
+  .episode-date,
+  .episode-time,
+  .episode-size {
+    justify-items: start;
+    text-align: left;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .show-more {
+    justify-self: center;
+    min-width: min(260px, 100%);
+    font-weight: 900;
   }
 
   .empty {
@@ -322,9 +524,98 @@
   }
 
   @media (max-width: 980px) {
-    .kaggle-toolbar,
-    .episode-list button {
+    .kaggle-toolbar {
       grid-template-columns: 1fr;
+    }
+
+    .episode-header {
+      display: none;
+    }
+
+    .episode-list {
+      width: 100%;
+      gap: 6px;
+    }
+
+    .episode-list button {
+      grid-template-columns: 52px minmax(0, 1fr);
+      grid-template-areas:
+        "rank main"
+        "avg avg"
+        "rating-low rating-high"
+        "gap gap"
+        "date date"
+        "time time"
+        "size size";
+      align-items: start;
+      gap: 6px 10px;
+      min-height: 180px;
+      padding: 10px;
+      border: 1px solid var(--button-border);
+      border-radius: 7px;
+    }
+
+    .episode-list span {
+      align-self: auto;
+      padding: 0;
+    }
+
+    .episode-list button span + span {
+      border-left: 0;
+    }
+
+    .rank {
+      grid-area: rank;
+    }
+
+    .episode-main {
+      grid-area: main;
+    }
+
+    .episode-avg,
+    .episode-rating-low,
+    .episode-rating-high,
+    .episode-gap,
+    .episode-date,
+    .episode-time,
+    .episode-size {
+      justify-items: start;
+      text-align: left;
+    }
+
+    .metric small,
+    .episode-date small,
+    .episode-time small,
+    .episode-size small {
+      display: block;
+    }
+
+    .episode-avg {
+      grid-area: avg;
+    }
+
+    .episode-rating-low {
+      grid-area: rating-low;
+    }
+
+    .episode-rating-high {
+      grid-area: rating-high;
+    }
+
+    .episode-gap {
+      grid-area: gap;
+    }
+
+    .episode-date {
+      grid-area: date;
+    }
+
+    .episode-time {
+      grid-area: time;
+    }
+
+    .episode-size {
+      grid-area: size;
     }
   }
 </style>

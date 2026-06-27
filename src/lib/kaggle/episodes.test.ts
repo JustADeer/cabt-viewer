@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  inferredKaggleEpisodeRatingRange,
   kaggleEpisodeReplayUrl,
   parseKaggleEpisodeDays,
   parseKaggleEpisodeManifest,
@@ -54,5 +55,21 @@ describe('Kaggle episode archive helpers', () => {
   it('builds a lazy replay URL for an individual episode file', () => {
     expect(kaggleEpisodeReplayUrl('pokemon-tcg-ai-battle-episodes-2026-06-24', '81726640'))
       .toBe('https://www.kaggle.com/api/v1/datasets/download/kaggle/pokemon-tcg-ai-battle-episodes-2026-06-24/81726640.json');
+  });
+
+  it('infers the two agent rating range from daily aggregate scores', () => {
+    expect(inferredKaggleEpisodeRatingRange({
+      episodeId: '81726640',
+      createTime: '2026-06-24T23:37:00.5148426',
+      avgScore: 1343.560242,
+      minScore: 1329.273042,
+      sumScore: 2687.120484,
+      agentCount: 2,
+      sizeBytes: 1856896,
+      dailyRank: 1,
+    })).toEqual({
+      lower: 1329.273042,
+      higher: 1357.847442,
+    });
   });
 });

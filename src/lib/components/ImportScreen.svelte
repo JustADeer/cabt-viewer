@@ -27,6 +27,8 @@
     catalogBusy?: boolean;
     error?: string;
     catalogError?: string;
+    kaggleSelectedEpisodeId?: string;
+    kaggleSelectedSlug?: string;
     setHomeMode: (mode: HomeMode) => void;
     startGame: () => void;
     loadGameLog: (log: GameLogEntry) => void;
@@ -54,6 +56,8 @@
     catalogBusy = false,
     error = '',
     catalogError = '',
+    kaggleSelectedEpisodeId = '',
+    kaggleSelectedSlug = '',
     setHomeMode,
     startGame,
     loadGameLog,
@@ -82,7 +86,7 @@
   }
 </script>
 
-<section class="import-screen">
+<section class="import-screen" class:logs-mode={homeMode === 'logs'}>
   <div class="home-tabs" role="tablist" aria-label="Home mode">
     <button class:active={homeMode === 'play'} type="button" onclick={() => setHomeMode('play')}>Play</button>
     <button class:active={homeMode === 'logs'} type="button" onclick={() => setHomeMode('logs')}>Game logs</button>
@@ -241,7 +245,12 @@
     </div>
 
     {#if logSource === 'kaggle'}
-      <KaggleEpisodeBrowser busy={busy} openEpisode={loadKaggleEpisode} />
+      <KaggleEpisodeBrowser
+        busy={busy}
+        initialSelectedEpisodeId={kaggleSelectedEpisodeId}
+        initialSelectedSlug={kaggleSelectedSlug}
+        openEpisode={loadKaggleEpisode}
+      />
     {:else}
       <div class="local-log-toolbar">
         <span></span>
@@ -452,8 +461,6 @@
   .log-list {
     display: grid;
     gap: 8px;
-    max-height: min(72vh, 820px);
-    overflow: auto;
   }
 
   .log-list button {
