@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { cardBackCssVar, cardFaceImageUrl } from '../game/cardAssets';
   import { onDestroy, onMount } from 'svelte';
   import { actionAnimationBatchEvents, actionAnimationStartMs, actionAnimationTiming } from '../cabt/actionAnimationSchedule';
   import { cabtCardToView } from '../cabt/cardView';
@@ -628,10 +629,10 @@
     {#each take.sprites as sprite (sprite.id)}
       <span class={`prize-take-card ${sprite.mode}`} class:revealed={sprite.reveal} style={takeSpriteStyle(sprite)}>
         <span class="prize-take-card-inner">
-          <span class="prize-take-card-face prize-take-card-back"></span>
+          <span class="prize-take-card-face prize-take-card-back" style={cardBackCssVar()}></span>
           <span class="prize-take-card-face prize-take-card-front">
-            {#if sprite.card?.imageUrl}
-              <img src={sprite.card.imageUrl} alt="" draggable="false" />
+            {#if cardFaceImageUrl(sprite.card)}
+              <img src={cardFaceImageUrl(sprite.card)} alt="" draggable="false" />
             {:else}
               <span class="fallback-name">{sprite.card?.name ?? 'Prize card'}</span>
             {/if}
@@ -664,8 +665,12 @@
     border-radius: inherit;
     pointer-events: none;
     background:
-      var(--cardback-shade),
-      url("/assets/cardback.png") center / cover no-repeat;
+      var(--card-back-image, var(--cardback-shade)),
+      linear-gradient(135deg, rgba(255, 255, 255, 0.1), transparent 28%),
+      repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.08) 0 6px, transparent 6px 12px),
+      linear-gradient(145deg, #203654, #111a2c);
+    background-size: cover, auto, auto, auto;
+    background-position: center;
     box-shadow:
       0 3px 8px rgba(23, 30, 38, 0.16),
       0 0 0 1px rgba(18, 21, 26, 0.12);
@@ -736,8 +741,12 @@
   .prize-take-card-back {
     transform: translateZ(0.2px);
     background:
-      var(--cardback-shade),
-      url("/assets/cardback.png") center / cover no-repeat;
+      var(--card-back-image, var(--cardback-shade)),
+      linear-gradient(135deg, rgba(255, 255, 255, 0.1), transparent 28%),
+      repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.08) 0 6px, transparent 6px 12px),
+      linear-gradient(145deg, #203654, #111a2c);
+    background-size: cover, auto, auto, auto;
+    background-position: center;
   }
 
   .prize-take-card-front {

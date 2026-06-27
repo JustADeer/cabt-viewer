@@ -40,6 +40,70 @@ http://localhost:5173/?view=replay&replayUrl=https://example.com/cabt-replay.jso
 Replay viewing does not require Python, Docker, Kaggle native libraries, or a
 local agent.
 
+## Optional User-Supplied Card Images
+
+The viewer is usable without Pokemon card images. Card faces, energy symbols,
+and card backs use generated text/CSS fallbacks unless you explicitly configure
+your own image source in a local `.env` file.
+
+The recommended setup is one visual asset manifest:
+
+```bash
+VITE_CABT_VISUAL_ASSET_MANIFEST=/local-card-images/manifest.json
+```
+
+Manifest example:
+
+```json
+{
+  "cards": {
+    "provider": "scrydex",
+    "images": {
+      "MEG-35": "/local-card-images/cards/MEG/35.png"
+    }
+  },
+  "energy": {
+    "grass": "/local-card-images/energy/grass.webp",
+    "fire": "/local-card-images/energy/fire.webp",
+    "water": "/local-card-images/energy/water.webp"
+  }
+}
+```
+
+The committed example lives at
+`docs/visual-asset-manifest.example.json`. Files under
+`public/local-card-images/` are ignored by git, so they can be used for local
+image packs without committing those assets.
+
+When Scrydex card images are enabled, card backs default to
+`https://images.scrydex.com/pokemon/large` and energy symbols use the bundled
+local images. The manifest only needs `cardBack` or `energy` entries when you
+want to override those defaults.
+
+For Scrydex card-face URLs, set a source:
+
+```bash
+VITE_CABT_CARD_IMAGE_SOURCE=scrydex
+VITE_CABT_CARD_BACK_IMAGE_URL=/local-card-images/cardback.png
+VITE_CABT_ENERGY_IMAGE_TEMPLATE=/local-card-images/energy/{slug}.webp
+```
+
+The Scrydex source uses this repo's set map to build card-face URLs in the
+`https://images.scrydex.com/pokemon/{setId}-{number}/large` shape. Leave the
+source unset to avoid generated external card-art URLs entirely.
+
+For a local mirror or your own hosted files, use a template instead:
+
+```bash
+VITE_CABT_CARD_IMAGE_TEMPLATE=/local-card-images/{set}/{number}.png
+VITE_CABT_CARD_BACK_IMAGE_URL=/local-card-images/cardback.png
+VITE_CABT_ENERGY_IMAGE_TEMPLATE=/local-card-images/energy/{slug}.webp
+```
+
+Template tokens are `{set}`, `{setId}`, `{number}`, `{numberPadded}`, `{name}`,
+and `{fullName}` for card faces. Energy-image templates support `{type}`,
+`{name}`, and `{slug}`.
+
 ## Run Local CABT Play
 
 Local play requires the Kaggle-provided sample submission files:
@@ -158,8 +222,8 @@ npm run build     # TypeScript + production build
 
 ## Notes
 
-- Full card art is loaded from external image URLs when set and collector
-  numbers are available; the repo only bundles local UI/energy assets.
+- Full card art and card backs are opt-in through local `.env` image source
+  settings. Without those settings, the viewer renders text/CSS fallbacks.
 - `dist/`, `node_modules/`, and local `.env` files are ignored and should not be
   committed.
 

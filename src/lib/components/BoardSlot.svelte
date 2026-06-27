@@ -1,6 +1,8 @@
 <script lang="ts">
   import CardTile from './CardTile.svelte';
-  import { energyIconSrc, pokemonTypeIconSrc, pokemonTypeLabelFor } from '../game/energyIcons';
+  import EnergySymbol from './EnergySymbol.svelte';
+  import { pokemonTypeLabelFor } from '../game/energyIcons';
+  import { cardFaceImageUrl } from '../game/cardAssets';
   import type { PokemonSlotView } from '../game/types';
 
   type Props = {
@@ -37,10 +39,10 @@
   let hpModified = $derived(!!displayHp && !!printedHp && displayHp !== printedHp);
   let hpIncreased = $derived(hpModified && displayHp > printedHp);
   let hpDecreased = $derived(hpModified && displayHp < printedHp);
-  let pokemonTypeIcon = $derived(pokemonTypeIconSrc(slot.pokemon?.cardType));
-  let pokemonTypeLabel = $derived(pokemonTypeLabelFor(slot.pokemon?.cardType));
+  let pokemonType = $derived(slot.pokemon?.cardType);
+  let pokemonTypeLabel = $derived(pokemonTypeLabelFor(pokemonType));
   let toolPreview = $derived(slot.tools[0]);
-  let toolPreviewImageUrl = $derived(toolPreview?.imageUrl ?? toolPreview?.cardImage);
+  let toolPreviewImageUrl = $derived(cardFaceImageUrl(toolPreview));
   let toolNames = $derived(slot.tools.map((tool) => tool.fullName || tool.name).join(', '));
   let failedToolImageUrl = $state('');
   let lastToolImageUrl = $state<string | undefined>();
@@ -101,19 +103,19 @@
 
   {#if slot.pokemon}
     <CardTile card={slot.pokemon} damage={slot.damage} />
-    {#if displayHp || pokemonTypeIcon}
+    {#if displayHp || pokemonType !== undefined}
       <div class="pokemon-status">
         <span
           class="pokemon-hp-bubble"
           class:hp-increased={hpIncreased}
           class:hp-decreased={hpDecreased}
-          title={`${displayHp ? `${displayHp} HP${hpModified ? ` (printed ${printedHp})` : ''}` : 'Pokemon'}${pokemonTypeIcon ? ` · ${pokemonTypeLabel}` : ''}`}
+          title={`${displayHp ? `${displayHp} HP${hpModified ? ` (printed ${printedHp})` : ''}` : 'Pokemon'}${pokemonType !== undefined ? ` · ${pokemonTypeLabel}` : ''}`}
         >
           {#if displayHp}
             <span>{displayHp}</span>
           {/if}
-          {#if pokemonTypeIcon}
-            <img src={pokemonTypeIcon} alt={pokemonTypeLabel} />
+          {#if pokemonType !== undefined}
+            <EnergySymbol type={pokemonType} title={pokemonTypeLabel} />
           {/if}
         </span>
       </div>
@@ -121,13 +123,13 @@
     {#if slot.energy.length}
       <div class="energy-badges" class:stacked-energy={stackedEnergy} title={`${slot.energy.length} attached energy`}>
         {#each slot.energy as energy, energyIndex}
-          <img
-            src={energyIconSrc(energy)}
-            alt={energy.name || 'Energy'}
+          <span
             data-energy-serial={energy.serial ?? undefined}
             class:pending-energy={hasPendingAttach(energy)}
             style={energyStackStyle(energyIndex)}
-          />
+          >
+            <EnergySymbol card={energy} title={energy.name || 'Energy'} className="attached-energy-symbol" />
+          </span>
         {/each}
       </div>
     {/if}
@@ -314,11 +316,11 @@
     color: #b91c1c;
   }
 
-  .pokemon-hp-bubble img {
+  .pokemon-hp-bubble :global(.energy-symbol) {
     width: clamp(13px, calc(var(--slot-card-w) * 0.12), 19px);
     height: clamp(13px, calc(var(--slot-card-w) * 0.12), 19px);
-    object-fit: contain;
-    filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.28));
+    min-width: clamp(13px, calc(var(--slot-card-w) * 0.12), 19px);
+    font-size: clamp(8px, calc(var(--slot-card-w) * 0.068), 11px);
   }
 
   .energy-badges {
@@ -336,20 +338,26 @@
     pointer-events: none;
   }
 
-  .energy-badges img {
+  .energy-badges > span {
     flex: 0 0 var(--energy-icon-size);
     width: var(--energy-icon-size);
     height: var(--energy-icon-size);
     border-radius: 999px;
-    object-fit: contain;
     filter: drop-shadow(0 3px 4px rgba(23, 30, 38, 0.38));
   }
 
-  .energy-badges img.pending-energy {
+  .energy-badges :global(.attached-energy-symbol) {
+    width: 100%;
+    height: 100%;
+    min-width: 100%;
+    font-size: calc(var(--energy-icon-size) * 0.43);
+  }
+
+  .energy-badges > span.pending-energy {
     opacity: 0.5;
   }
 
-  .energy-badges img:global(.reveal-attach-handoff-energy) {
+  .energy-badges > span:global(.reveal-attach-handoff-energy) {
     animation: reveal-attached-energy 360ms cubic-bezier(0.2, 0.82, 0.22, 1) both;
   }
 
@@ -357,7 +365,7 @@
     display: block;
   }
 
-  .energy-badges.stacked-energy img {
+  .energy-badges.stacked-energy > span {
     position: absolute;
     left: var(--energy-offset);
     bottom: 0;

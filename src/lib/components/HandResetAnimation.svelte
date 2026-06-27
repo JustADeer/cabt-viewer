@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { cardBackCssVar, cardFaceImageUrl } from '../game/cardAssets';
   import { onDestroy, onMount } from 'svelte';
   import { actionAnimationBatchEvents, actionAnimationStartMs } from '../cabt/actionAnimationSchedule';
   import { cabtCardToView } from '../cabt/cardView';
@@ -334,11 +335,11 @@
           <span class={`hand-reset-card-motion ${sprite.concealed ? '' : 'revealed'}`}>
             <span class="hand-reset-card-orientation">
               <span class="hand-reset-card-inner">
-                <span class="hand-reset-card-face hand-reset-card-back"></span>
+                <span class="hand-reset-card-face hand-reset-card-back" style={cardBackCssVar()}></span>
                 {#if !sprite.concealed}
                 <span class="hand-reset-card-face hand-reset-card-front">
-                  {#if sprite.card?.imageUrl}
-                    <img src={sprite.card.imageUrl} alt="" draggable="false" />
+                  {#if cardFaceImageUrl(sprite.card)}
+                    <img src={cardFaceImageUrl(sprite.card)} alt="" draggable="false" />
                   {:else}
                     <span class="fallback-name">{sprite.card?.name ?? 'Card'}</span>
                   {/if}
@@ -427,8 +428,12 @@
   .hand-reset-card-back {
     transform: rotateY(180deg);
     background:
-      var(--cardback-shade),
-      url("/assets/cardback.png") center / cover no-repeat;
+      var(--card-back-image, var(--cardback-shade)),
+      linear-gradient(135deg, rgba(255, 255, 255, 0.1), transparent 28%),
+      repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.08) 0 6px, transparent 6px 12px),
+      linear-gradient(145deg, #203654, #111a2c);
+    background-size: cover, auto, auto, auto;
+    background-position: center;
   }
 
   .hand-reset-card-motion:not(.revealed) .hand-reset-card-back {

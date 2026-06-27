@@ -144,6 +144,10 @@
     transform: rotate(180deg);
   }
 
+  .active-duel :global(.top-active-slot .energy-badges .attached-energy-symbol) {
+    transform: rotate(180deg);
+  }
+
   .active-duel :global(.top-active-slot .tool-card-preview) {
     inset: auto auto var(--tool-preview-top) 0;
     transform: rotate(180deg);

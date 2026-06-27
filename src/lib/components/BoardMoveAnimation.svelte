@@ -437,6 +437,10 @@
     transform: rotate(180deg);
   }
 
+  .board-move-card.opponent-side :global(.energy-badges .attached-energy-symbol) {
+    transform: rotate(180deg);
+  }
+
   .board-move-card.opponent-side :global(.tool-card-preview) {
     inset: auto auto var(--tool-preview-top) 0;
     transform: rotate(180deg);

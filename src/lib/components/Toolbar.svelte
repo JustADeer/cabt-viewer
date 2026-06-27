@@ -13,6 +13,7 @@
     debugZones: boolean;
     showLogs: boolean;
     animateActions: boolean;
+    showCardImages: boolean;
     actionStepDelayMs: number;
     themePreference: ThemePreference;
     busy?: boolean;
@@ -38,6 +39,7 @@
     debugZones = $bindable(),
     showLogs = $bindable(),
     animateActions = $bindable(),
+    showCardImages = $bindable(),
     actionStepDelayMs = $bindable(),
     themePreference = $bindable(),
     busy = false,
@@ -81,6 +83,10 @@
   <label>
     <input type="checkbox" bind:checked={animateActions} />
     Step playback
+  </label>
+  <label>
+    <input type="checkbox" bind:checked={showCardImages} />
+    Card images
   </label>
   <label>
     Step ms

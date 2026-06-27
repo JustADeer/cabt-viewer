@@ -87,6 +87,7 @@
     type SetupPlacementContext,
   } from './state/setupSelectionModel';
   import { viewSettingsStore } from './state/viewSettings.svelte';
+  import { visualAssetsStore } from './state/visualAssets.svelte';
   import { zoneViewerStore } from './state/zoneViewer.svelte';
 
   type HomeMode = 'play' | 'logs';
@@ -152,6 +153,7 @@
   let selectedPlayer2Deck = $derived(agents.find((agent) => agent.id === player2DeckSource && agent.deckUrl));
   onMount(() => {
     const stopThemeSync = viewSettingsStore.startThemeSync();
+    void visualAssetsStore.loadConfiguredManifest();
     void refreshCatalog();
     if (initialReplayMode) {
       void replayStore.loadSaved();
@@ -1201,6 +1203,7 @@
         bind:debugZones={viewSettingsStore.debugZones}
         bind:showLogs={viewSettingsStore.showLogs}
         bind:animateActions={viewSettingsStore.animateActions}
+        bind:showCardImages={viewSettingsStore.showCardImages}
         bind:actionStepDelayMs={viewSettingsStore.actionStepDelayMs}
         bind:themePreference={viewSettingsStore.themePreference}
         busy={commandBusy}
@@ -1377,7 +1380,7 @@
             dimDisabled={!replayMode}
             playableIndexes={setupPrompt?.playerIndex === bottomPlayer.index ? setupPlayableIndexes : []}
             placedIndexes={setupPrompt?.playerIndex === bottomPlayer.index ? setupPlacedIndexes : []}
-            concealed={!isSelfControlled(bottomPlayer.index)}
+            concealed={!replayMode && !isSelfControlled(bottomPlayer.index)}
             onSelect={selectHandCard}
             onDrag={onHandDrag}
             onDragEnd={clearDragState}

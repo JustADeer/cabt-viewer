@@ -5,6 +5,7 @@
   import { CabtAreaType } from '../cabt/types';
   import { viewportQuad, type Point } from '../dom/planeGeometry';
   import { replayAnimationPhaseGapMs } from '../game/replay';
+  import { cardFaceImageUrl, cssAssetUrl } from '../game/cardAssets';
   import type { ActionTimelineEvent } from '../game/types';
 
   type Props = {
@@ -33,6 +34,9 @@
     startTransform: string;
     endTransform: string;
     imageUrl: string;
+    label: string;
+    setLabel: string;
+    typeClass: string;
     hideContents: boolean;
   };
 
@@ -221,7 +225,7 @@
     const card = cabtCardToView(cardId);
     const delayMs = actionAnimationStartMs(animationEvents, event);
     if (event.kind === 'Attach') {
-      return [slotAttachAnimationForEvent(target, sourceRect, targetRect, card.imageUrl ?? '', delayMs)];
+      return [slotAttachAnimationForEvent(target, sourceRect, targetRect, cardFaceImageUrl(card) ?? '', delayMs)];
     }
 
     const sourceQuad = sourceQuadForHand(handElement, sourceRect);
@@ -243,7 +247,14 @@
       height: sourceRect.height,
       startTransform,
       endTransform,
-      imageUrl: card.imageUrl ?? '',
+      imageUrl: cardFaceImageUrl(card) ?? '',
+      label: card.name,
+      setLabel: [card.set, card.setNumber].filter(Boolean).join(' '),
+      typeClass: card.energyType !== undefined || card.superType === 'Energy' || card.name.includes('Energy')
+        ? 'energy'
+        : card.trainerType !== undefined || card.superType === 'Trainer'
+          ? 'trainer'
+          : 'pokemon',
       hideContents: isEvolution ? false : shouldHideTargetContents(event, target),
     }];
   }
@@ -301,7 +312,7 @@
     animation.target.dataset.handPlayAnimationActive = 'true';
     if (animation.kind === 'slotAttach') {
       animation.target.dataset.handAttachAnimationActive = 'true';
-      animation.target.style.setProperty('--hand-attach-card-image', cssUrl(animation.imageUrl));
+      animation.target.style.setProperty('--hand-attach-card-image', cssAssetUrl(animation.imageUrl));
       animation.target.style.setProperty('--hand-attach-start-x', `${(animation.startX * 100).toFixed(1)}%`);
       animation.target.style.setProperty('--hand-attach-start-y', `${(animation.startY * 100).toFixed(1)}%`);
       animation.target.style.setProperty('--hand-attach-start-rotation', `${animation.startRotation.toFixed(1)}deg`);
@@ -605,10 +616,6 @@
     return Number.isFinite(value) ? value.toFixed(6).replace(/\.?0+$/, '') : '0';
   }
 
-  function cssUrl(value: string): string {
-    return value ? `url(${JSON.stringify(value)})` : 'none';
-  }
-
   function solveHomography(from: Point[], to: Point[]): number[] | null {
     const matrix: number[][] = [];
     for (let index = 0; index < 4; index += 1) {
@@ -680,9 +687,16 @@
         class:evolving={play.mode === 'evolve'}
         style={`width: ${play.width.toFixed(1)}px; height: ${play.height.toFixed(1)}px; --hand-play-start-transform: ${play.startTransform}; --hand-play-end-transform: ${play.endTransform}; --hand-play-delay: ${play.delayMs}ms; --hand-play-duration: ${play.mode === 'evolve' ? evolveMoveDurationMs : cardMoveDurationMs}ms; --hand-evolve-visible-duration: ${evolveVisibleDurationMs}ms;`}
       >
-        <div class="hand-play-card-body">
+        <div class={`hand-play-card-body ${play.typeClass}`}>
           {#if play.imageUrl}
             <img src={play.imageUrl} alt="" draggable="false" />
+          {:else}
+            <span class="fallback-card">
+              <span class="fallback-name">{play.label}</span>
+              {#if play.setLabel}
+                <span class="fallback-set">{play.setLabel}</span>
+              {/if}
+            </span>
           {/if}
         </div>
       </div>
@@ -805,6 +819,50 @@
     object-fit: fill;
     pointer-events: none;
     -webkit-user-drag: none;
+  }
+
+  .hand-play-card .fallback-card {
+    display: grid;
+    grid-template-rows: 1fr auto;
+    align-items: center;
+    justify-items: center;
+    height: 100%;
+    padding: 9%;
+    background: linear-gradient(145deg, #f8fafc, #d7dee8);
+    color: #18212d;
+    box-sizing: border-box;
+  }
+
+  .hand-play-card-body.pokemon .fallback-card {
+    background: linear-gradient(145deg, #eaf4ee, #b8d7c4);
+  }
+
+  .hand-play-card-body.energy .fallback-card {
+    background: linear-gradient(145deg, #fff6c2, #dfc04d);
+  }
+
+  .hand-play-card .fallback-name {
+    display: -webkit-box;
+    max-width: 100%;
+    overflow: hidden;
+    text-align: center;
+    font-size: clamp(10px, calc(var(--card-w, 88px) * 0.14), 13px);
+    font-weight: 950;
+    line-height: 1.08;
+    overflow-wrap: anywhere;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 5;
+  }
+
+  .hand-play-card .fallback-set {
+    max-width: 100%;
+    overflow: hidden;
+    color: rgba(24, 33, 45, 0.68);
+    font-size: 9px;
+    font-weight: 850;
+    text-overflow: ellipsis;
+    text-transform: uppercase;
+    white-space: nowrap;
   }
 
   .hand-play-card.evolving .hand-play-card-body {

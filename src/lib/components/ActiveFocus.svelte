@@ -1,6 +1,7 @@
 <script lang="ts">
   import CardTile from './CardTile.svelte';
-  import { normalizedTypeName, pokemonTypeIconSrc, pokemonTypeLabelFor } from '../game/energyIcons';
+  import EnergySymbol from './EnergySymbol.svelte';
+  import { normalizedTypeName, pokemonTypeLabelFor } from '../game/energyIcons';
   import type { AttackView, AvailableActionsView, CardTarget, CardView, PokemonSlotView } from '../game/types';
 
   type Props = {
@@ -40,8 +41,8 @@
   let remainingHp = $derived(Math.max(0, displayHp - slot.damage));
   let hpIncreased = $derived(!!displayHp && !!printedHp && displayHp > printedHp);
   let hpDecreased = $derived(!!displayHp && !!printedHp && displayHp < printedHp);
-  let focusTypeIcon = $derived(pokemonTypeIconSrc(pokemon?.cardType));
-  let focusTypeLabel = $derived(pokemonTypeLabelFor(pokemon?.cardType));
+  let focusType = $derived(pokemon?.cardType);
+  let focusTypeLabel = $derived(pokemonTypeLabelFor(focusType));
   let detailAttachments = $derived(attachedCards());
   let slotActions = $derived(slot.slot === 'active'
     ? availableActions?.active
@@ -87,7 +88,6 @@
         key: `${index}-${type}`,
         type,
         paid: paidBy !== -1,
-        icon: pokemonTypeIconSrc(type) ?? '/assets/energy-icons/colorless.webp',
         label: pokemonTypeLabelFor(type),
       };
     });
@@ -212,8 +212,8 @@
                 <span class="hp-divider">/</span>
                 <span>{displayHp}</span>
                 <span class="hp-label">HP</span>
-                {#if focusTypeIcon}
-                  <img src={focusTypeIcon} alt={focusTypeLabel} title={focusTypeLabel} />
+                {#if focusType !== undefined}
+                  <EnergySymbol type={focusType} title={focusTypeLabel} />
                 {/if}
               </span>
             </div>
@@ -246,12 +246,7 @@
                     onclick={() => useAbility(power.name, slot.target)}
                   >
                     <span class="ability-name-line">
-                      <img
-                        class="ability-badge"
-                        class:used={action?.used}
-                        src="/assets/ui/ability-badge.png"
-                        alt={action?.used ? 'Used ability' : 'Ability'}
-                      />
+                      <span class="ability-badge" class:used={action?.used}>{action?.used ? 'Used' : 'Ability'}</span>
                       <strong>{power.name}</strong>
                       {#if action?.used}
                         <span class="action-kind">Used</span>
@@ -282,7 +277,7 @@
                       <span class="attack-name-line">
                         <span class="energy-cost" aria-label={`${cost.length} energy cost`}>
                           {#each cost as token (token.key)}
-                            <img class:unpaid={!token.paid} src={token.icon} alt={token.label} title={token.label} />
+                            <EnergySymbol type={token.type} paid={token.paid} title={token.label} className="cost-symbol" />
                           {/each}
                         </span>
                         <strong>{item.name}</strong>
@@ -311,7 +306,7 @@
               >
                 <span class="energy-cost" aria-label={`${retreatCost.length} retreat cost`}>
                   {#each retreatCost as token (token.key)}
-                    <img class:unpaid={!token.paid} src={token.icon} alt={token.label} title={token.label} />
+                    <EnergySymbol type={token.type} paid={token.paid} title={token.label} className="cost-symbol" />
                   {/each}
                 </span>
                 <strong>Retreat</strong>
@@ -582,11 +577,11 @@
     font-weight: 850;
   }
 
-  .focus-hp-badge img {
+  .focus-hp-badge :global(.energy-symbol) {
     width: 20px;
     height: 20px;
-    border-radius: var(--radius-pill);
-    box-shadow: 0 1px 3px rgba(12, 15, 19, 0.24);
+    min-width: 20px;
+    font-size: 10px;
   }
 
   .focus-meta,
@@ -711,14 +706,23 @@
   }
 
   .ability-badge {
-    width: 72px;
-    height: auto;
-    display: block;
-    filter: drop-shadow(0 1px 2px rgba(12, 15, 19, 0.22));
+    display: inline-flex;
+    align-items: center;
+    min-height: 18px;
+    padding: 2px 7px;
+    border-radius: var(--radius-pill);
+    border: 1px solid rgba(72, 111, 162, 0.32);
+    background: linear-gradient(180deg, rgba(225, 239, 255, 0.96), rgba(172, 205, 241, 0.92));
+    color: #1e4f82;
+    font-size: 9px;
+    font-weight: 900;
+    line-height: 1;
   }
 
   .ability-badge.used {
-    filter: grayscale(1) opacity(0.62);
+    border-color: var(--button-border);
+    background: var(--surface-inset-bg);
+    color: var(--text-muted);
   }
 
   .action-card.used .action-kind {
@@ -742,16 +746,11 @@
     font-weight: 850;
   }
 
-  .energy-cost img {
+  .energy-cost :global(.cost-symbol) {
     width: 18px;
     height: 18px;
-    border-radius: var(--radius-pill);
-    box-shadow: 0 1px 3px rgba(12, 15, 19, 0.24);
-  }
-
-  .energy-cost img.unpaid {
-    filter: grayscale(1);
-    opacity: 0.34;
+    min-width: 18px;
+    font-size: 9px;
   }
 
   .retreat-row {

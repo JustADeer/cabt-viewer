@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { cardBackCssVar, cardFaceImageUrl } from '../game/cardAssets';
   import { onDestroy, onMount } from 'svelte';
   import { actionAnimationBatchEvents, actionAnimationStartMs } from '../cabt/actionAnimationSchedule';
   import { cabtCardToView } from '../cabt/cardView';
@@ -332,10 +333,10 @@
     {#each draw.sprites as sprite (sprite.id)}
       <span class="draw-card" class:revealed={sprite.reveal} style={spriteStyle(sprite)}>
         <span class="draw-card-inner">
-          <span class="draw-card-face draw-card-back"></span>
+          <span class="draw-card-face draw-card-back" style={cardBackCssVar()}></span>
           <span class="draw-card-face draw-card-front">
-            {#if sprite.card?.imageUrl}
-              <img src={sprite.card.imageUrl} alt="" draggable="false" />
+            {#if cardFaceImageUrl(sprite.card)}
+              <img src={cardFaceImageUrl(sprite.card)} alt="" draggable="false" />
             {:else}
               <span class="fallback-name">{sprite.card?.name ?? 'Card'}</span>
             {/if}
@@ -399,8 +400,12 @@
 
   .draw-card-back {
     background:
-      var(--cardback-shade),
-      url("/assets/cardback.png") center / cover no-repeat;
+      var(--card-back-image, var(--cardback-shade)),
+      linear-gradient(135deg, rgba(255, 255, 255, 0.1), transparent 28%),
+      repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.08) 0 6px, transparent 6px 12px),
+      linear-gradient(145deg, #203654, #111a2c);
+    background-size: cover, auto, auto, auto;
+    background-position: center;
   }
 
   .draw-card-front {

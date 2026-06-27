@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onDestroy, onMount } from 'svelte';
   import { actionAnimationBatchEvents, actionAnimationStartMs } from '../cabt/actionAnimationSchedule';
+  import { cardBackCssVar } from '../game/cardAssets';
   import type { ActionTimelineEvent } from '../game/types';
 
   type Props = {
@@ -162,7 +163,7 @@
     <span class="shuffle-stack">
       <span class="shuffle-glow"></span>
       {#each shuffle.sprites as sprite (sprite.id)}
-        <span class="shuffle-card" style={spriteStyle(sprite)}></span>
+        <span class="shuffle-card" style={`${spriteStyle(sprite)}; ${cardBackCssVar()}`}></span>
       {/each}
     </span>
   {/each}
@@ -189,8 +190,12 @@
 
   .shuffle-card {
     background:
-      var(--cardback-shade),
-      url("/assets/cardback.png") center / cover no-repeat;
+      var(--card-back-image, var(--cardback-shade)),
+      linear-gradient(135deg, rgba(255, 255, 255, 0.1), transparent 28%),
+      repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.08) 0 6px, transparent 6px 12px),
+      linear-gradient(145deg, #203654, #111a2c);
+    background-size: cover, auto, auto, auto;
+    background-position: center;
     box-shadow:
       0 7px 16px rgba(23, 30, 38, 0.2),
       0 0 0 1px rgba(18, 21, 26, 0.16);

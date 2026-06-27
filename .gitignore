@@ -7,3 +7,4 @@ node_modules
 .DS_Store
 sample_submission
 data
+public/local-card-images

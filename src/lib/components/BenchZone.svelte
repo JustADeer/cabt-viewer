@@ -203,6 +203,10 @@
     transform: rotate(180deg);
   }
 
+  .bench-row.opponent :global(.energy-badges .attached-energy-symbol) {
+    transform: rotate(180deg);
+  }
+
   .bench-row.opponent :global(.tool-card-preview) {
     inset: auto auto var(--tool-preview-top) 0;
     transform: rotate(180deg);

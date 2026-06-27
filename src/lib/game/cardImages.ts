@@ -1,12 +1,18 @@
-export type CardImageSource = 'scrydex' | 'pkmncards' | 'pokemontcg';
+import type { VisualAssetManifest } from './visualAssets';
+
+export type CardImageConfig = {
+  source?: string;
+  template?: string;
+  cardBackUrl?: string;
+};
 
 export type SetImageInfo = {
   id: string;
-  source?: CardImageSource;
 };
 
 export type CardImageInput = {
   imageUrl?: string;
+  cardImage?: string;
   set?: string;
   setNumber?: string;
   name?: string;
@@ -37,38 +43,149 @@ export const setImageMap: Record<string, string | SetImageInfo> = {
   DRI: 'sv10',
   BLK: 'zsv10pt5',
   WHT: 'rsv10pt5',
-  MEP: { id: 'mep', source: 'scrydex' },
-  MEE: { id: 'mee', source: 'pkmncards' },
+  MEP: 'mep',
+  MEE: 'mee',
   MEG: 'me1',
   M1L: 'me1',
   M1S: 'me1',
-  PFL: { id: 'me2', source: 'scrydex' },
-  ASC: { id: 'me2pt5', source: 'scrydex' },
-  POR: { id: 'me3', source: 'scrydex' },
-  CRI: { id: 'me4', source: 'scrydex' },
+  PFL: 'me2',
+  ASC: 'me2pt5',
+  POR: 'me3',
+  CRI: 'me4',
+  PROMO: 'svp',
+  SVP: 'svp',
 };
 
-export function resolveCardImageUrl(card: CardImageInput): string | undefined {
-  if (card.imageUrl) {
-    return card.imageUrl;
+export function resolveCardImageUrl(card: CardImageInput, config = cardImageConfigFromEnv()): string | undefined {
+  if (card.imageUrl || card.cardImage) {
+    return card.imageUrl ?? card.cardImage;
   }
   if (card.name === 'Unknown' || card.fullName === 'Unknown') {
     return undefined;
   }
   const setInfo = getSetImageInfo(card.set);
-  if (!setInfo || !card.setNumber) {
+  if (!card.setNumber) {
     return undefined;
   }
   const rawSetNumber = String(card.setNumber);
+  const template = config.template?.trim();
+  if (template) {
+    return cardImageUrlFromTemplate(template, card, setInfo, rawSetNumber);
+  }
+  if (!scrydexCardImagesEnabled(config) || !setInfo) {
+    return undefined;
+  }
+  return scrydexCardImageUrl(setInfo.id, rawSetNumber);
+}
+
+export function resolveCardImageUrlFromManifest(card: CardImageInput, manifest: VisualAssetManifest | undefined): string | undefined {
+  const cards = manifest?.cards;
+  if (!cards) {
+    return undefined;
+  }
+  const setInfo = getSetImageInfo(card.set);
+  const rawSetNumber = card.setNumber ? String(card.setNumber) : '';
+  const explicit = manifestCardImageUrl(cards.images, card, setInfo, rawSetNumber);
+  if (explicit) {
+    return explicit;
+  }
+  if (!rawSetNumber) {
+    return undefined;
+  }
+  if (cards.template) {
+    return cardImageUrlFromTemplate(cards.template, card, setInfo, rawSetNumber);
+  }
+  if (cards.provider === 'scrydex' && setInfo) {
+    return scrydexCardImageUrl(setInfo.id, rawSetNumber);
+  }
+  return undefined;
+}
+
+export function resolveCardBackImageUrl(config = cardImageConfigFromEnv()): string | undefined {
+  return config.cardBackUrl?.trim() || (scrydexCardImagesEnabled(config) ? scrydexCardBackImageUrl() : undefined);
+}
+
+export function resolveCardBackImageUrlFromManifest(manifest: VisualAssetManifest | undefined): string | undefined {
+  return manifest?.cardBack?.trim() || (manifest?.cards?.provider === 'scrydex' ? scrydexCardBackImageUrl() : undefined);
+}
+
+export function hasConfiguredCardImageSource(config = cardImageConfigFromEnv(), manifest?: VisualAssetManifest): boolean {
+  return !!manifest?.cards || !!config.template?.trim() || scrydexCardImagesEnabled(config);
+}
+
+function scrydexCardImageUrl(setId: string, rawSetNumber: string): string {
   const setNumber = encodeURIComponent(rawSetNumber);
-  if (setInfo.source === 'scrydex') {
-    return `https://images.scrydex.com/pokemon/${setInfo.id}-${setNumber}/large`;
+  return `https://images.scrydex.com/pokemon/${encodeURIComponent(setId)}-${setNumber}/large`;
+}
+
+function scrydexCardBackImageUrl(): string {
+  return 'https://images.scrydex.com/pokemon/large';
+}
+
+function manifestCardImageUrl(
+  images: Record<string, string> | undefined,
+  card: CardImageInput,
+  setInfo: SetImageInfo | undefined,
+  rawSetNumber: string,
+): string | undefined {
+  if (!images) {
+    return undefined;
   }
-  if (setInfo.source === 'pkmncards') {
-    const paddedSetNumber = encodeURIComponent(rawSetNumber.padStart(3, '0'));
-    return `https://pkmncards.com/wp-content/uploads/${setInfo.id}_en_${paddedSetNumber}_std.png`;
+  for (const key of cardImageKeys(card, setInfo, rawSetNumber)) {
+    const image = images[key];
+    if (image) {
+      return image;
+    }
   }
-  return `https://images.pokemontcg.io/${setInfo.id}/${setNumber}.png`;
+  return undefined;
+}
+
+function cardImageKeys(card: CardImageInput, setInfo: SetImageInfo | undefined, rawSetNumber: string): string[] {
+  return [
+    [card.set, rawSetNumber].filter(Boolean).join('-'),
+    [card.set?.toUpperCase(), rawSetNumber].filter(Boolean).join('-'),
+    [setInfo?.id, rawSetNumber].filter(Boolean).join('-'),
+    [setInfo?.id?.toUpperCase(), rawSetNumber].filter(Boolean).join('-'),
+    card.fullName ?? '',
+    card.name ?? '',
+  ].filter(Boolean);
+}
+
+function cardImageUrlFromTemplate(
+  template: string,
+  card: CardImageInput,
+  setInfo: SetImageInfo | undefined,
+  rawSetNumber: string,
+): string {
+  const fullName = card.fullName || card.name || '';
+  const values: Record<string, string> = {
+    set: card.set ?? '',
+    setId: setInfo?.id ?? card.set ?? '',
+    number: rawSetNumber,
+    numberPadded: rawSetNumber.padStart(3, '0'),
+    name: card.name ?? fullName,
+    fullName,
+  };
+  return template.replace(/\{(set|setId|number|numberPadded|name|fullName)\}/g, (_, key: keyof typeof values) => {
+    return encodeURIComponent(values[key]);
+  });
+}
+
+function scrydexCardImagesEnabled(config: CardImageConfig): boolean {
+  const source = config.source?.trim().toLowerCase();
+  return source === 'scrydex';
+}
+
+function cardImageConfigFromEnv(): CardImageConfig {
+  return {
+    source: import.meta.env?.VITE_CABT_CARD_IMAGE_SOURCE ?? legacyCardImageSourceFromEnv(),
+    template: import.meta.env?.VITE_CABT_CARD_IMAGE_TEMPLATE,
+    cardBackUrl: import.meta.env?.VITE_CABT_CARD_BACK_IMAGE_URL,
+  };
+}
+
+function legacyCardImageSourceFromEnv(): string | undefined {
+  return import.meta.env?.VITE_CABT_CARD_IMAGE_MODE === 'external' ? 'scrydex' : undefined;
 }
 
 export function getSetImageInfo(setCode: string | undefined): SetImageInfo | undefined {
@@ -76,5 +193,5 @@ export function getSetImageInfo(setCode: string | undefined): SetImageInfo | und
   if (!info) {
     return undefined;
   }
-  return typeof info === 'string' ? { id: info, source: 'pokemontcg' } : info;
+  return typeof info === 'string' ? { id: info } : info;
 }

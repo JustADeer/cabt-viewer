@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { cardFaceImageUrl } from '../game/cardAssets';
   import { onDestroy, onMount } from 'svelte';
   import { actionAnimationBatchEvents, actionAnimationStartMs, actionAnimationTiming } from '../cabt/actionAnimationSchedule';
   import { cabtCardToView } from '../cabt/cardView';
@@ -300,10 +301,10 @@
     <span class="attack-damage-number" style={damageSpriteStyle(sprite)}>{sprite.value}</span>
   {/each}
   {#each knockOutSprites as sprite (sprite.id)}
-    <span class="attack-ko-card" style={knockOutSpriteStyle(sprite)}>
-      <span class="attack-ko-card-frame">
-        {#if sprite.card.imageUrl}
-          <img src={sprite.card.imageUrl} alt="" draggable="false" />
+      <span class="attack-ko-card" style={knockOutSpriteStyle(sprite)}>
+        <span class="attack-ko-card-frame">
+        {#if cardFaceImageUrl(sprite.card)}
+          <img src={cardFaceImageUrl(sprite.card)} alt="" draggable="false" />
         {:else}
           <span>{sprite.card.name}</span>
         {/if}

@@ -466,7 +466,6 @@ function pokemon(
     fullName,
     set,
     setNumber,
-    imageUrl: image(set, setNumber),
     superType: 'Pokemon',
     cardType: 'Pokemon',
     hp,
@@ -483,7 +482,6 @@ function trainer(id: number, name: string, fullName: string, set: string, setNum
     fullName,
     set,
     setNumber,
-    imageUrl: image(set, setNumber),
     superType: 'Trainer',
     trainerType,
   };
@@ -496,14 +494,9 @@ function energy(id: number, name: string, fullName: string, set: string, setNumb
     fullName,
     set,
     setNumber,
-    imageUrl: image(set, setNumber),
     superType: 'Energy',
     energyType: 'Basic',
   };
-}
-
-function image(set: string, setNumber: string) {
-  return `https://images.pokemontcg.io/${set}/${setNumber}_hires.png`;
 }
 
 function withIndexes(input: CardView[]) {

@@ -1,23 +1,24 @@
 import { describe, expect, it } from 'vitest';
-import { energyIconSrc, normalizedTypeName, pokemonTypeIconSrc, pokemonTypeLabelFor } from './energyIcons';
+import { energySymbolInfo, energySymbolInfoForType, normalizedTypeName, pokemonTypeLabelFor } from './energyIcons';
 
-describe('energy and Pokemon type icon helpers', () => {
-  it('resolves custom energy artwork before basic regex fallbacks', () => {
-    expect(energyIconSrc({ name: 'Double Turbo Energy' })).toBe('/assets/energy/double-turbo.png');
+describe('energy and Pokemon type helpers', () => {
+  it('resolves basic energy symbols from card names', () => {
+    expect(energySymbolInfo({ name: 'Basic Psychic Energy' })).toMatchObject({ type: 'psychic', label: 'Psychic', letter: 'P' });
+    expect(energySymbolInfo({ name: 'Basic {G} Energy' })).toMatchObject({ type: 'grass', label: 'Grass', letter: 'G' });
+    expect(energySymbolInfo({ name: 'Basic Energy', energyType: 1 })).toMatchObject({ type: 'grass', label: 'Grass', letter: 'G' });
+    expect(energySymbolInfo({ name: 'Unknown Special Energy' })).toMatchObject({ type: 'colorless', label: 'Colorless', letter: 'C' });
   });
 
-  it('resolves basic energy artwork from card names', () => {
-    expect(energyIconSrc({ name: 'Basic Psychic Energy' })).toBe('/assets/energy-icons/psychic.webp');
-    expect(energyIconSrc({ name: 'Basic {G} Energy' })).toBe('/assets/energy-icons/grass.webp');
-    expect(energyIconSrc({ name: 'Basic Energy', energyType: 1 })).toBe('/assets/energy-icons/grass.webp');
-    expect(energyIconSrc({ name: 'Unknown Special Energy' })).toBe('/assets/energy-icons/colorless.webp');
+  it('uses requested letters for fire and fairy symbols', () => {
+    expect(energySymbolInfoForType('Fire')).toMatchObject({ type: 'fire', letter: 'R' });
+    expect(energySymbolInfoForType('Fairy')).toMatchObject({ type: 'fairy', letter: 'Y' });
   });
 
   it('normalizes card type values for Pokemon badges', () => {
     expect(normalizedTypeName(4)).toBe('lightning');
     expect(normalizedTypeName('{G}')).toBe('grass');
     expect(normalizedTypeName('Dark')).toBe('darkness');
-    expect(pokemonTypeIconSrc('Fire')).toBe('/assets/energy-icons/fire.webp');
+    expect(energySymbolInfoForType('Fire')).toMatchObject({ type: 'fire', label: 'Fire' });
     expect(pokemonTypeLabelFor('Psychic')).toBe('Psychic');
     expect(pokemonTypeLabelFor(undefined)).toBe('Pokemon');
   });

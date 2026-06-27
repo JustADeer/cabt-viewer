@@ -1,0 +1,20 @@
+{
+  "cards": {
+    "provider": "scrydex",
+    "images": {
+      "MEG-35": "/local-card-images/cards/MEG/35.png"
+    }
+  },
+  "energy": {
+    "grass": "/local-card-images/energy/grass.webp",
+    "fire": "/local-card-images/energy/fire.webp",
+    "water": "/local-card-images/energy/water.webp",
+    "lightning": "/local-card-images/energy/lightning.webp",
+    "psychic": "/local-card-images/energy/psychic.webp",
+    "fighting": "/local-card-images/energy/fighting.webp",
+    "darkness": "/local-card-images/energy/darkness.webp",
+    "metal": "/local-card-images/energy/metal.webp",
+    "colorless": "/local-card-images/energy/colorless.webp",
+    "double-turbo": "/local-card-images/energy/double-turbo.png"
+  }
+}

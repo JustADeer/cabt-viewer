@@ -1,4 +1,4 @@
-const basicEnergyIcons: Array<[RegExp, string]> = [
+const basicEnergyTypes: Array<[RegExp, string]> = [
   [/\{G\}\s*Energy\b/i, 'grass'],
   [/\{R\}\s*Energy\b/i, 'fire'],
   [/\{W\}\s*Energy\b/i, 'water'],
@@ -20,36 +20,51 @@ const basicEnergyIcons: Array<[RegExp, string]> = [
   [/\bColorless Energy\b/i, 'colorless'],
 ];
 
-const customEnergyIcons: Record<string, string> = {
-  'Double Turbo Energy': '/assets/energy/double-turbo.png',
-  'Jet Energy': '/assets/energy/jet.png',
-  'Gift Energy': '/assets/energy/gift.png',
-  'Mist Energy': '/assets/energy/mist.png',
-  'Luminous Energy': '/assets/energy/luminous.webp',
-  'Reversal Energy': '/assets/energy/reversal.webp',
-  'Therapeutic Energy': '/assets/energy/therapeutic.webp',
-  'Medical Energy': '/assets/energy/medical.webp',
-  'Boomerang Energy': '/assets/energy/boomerang.webp',
-  'Spiky Energy': '/assets/energy/spiky.webp',
-  "Team Rocket's Energy": '/assets/energy/team-rockets.webp',
-  'Prism Energy': '/assets/energy/prism.webp',
-  'Ignition Energy': '/assets/energy/ignition.webp',
-  'Enriching Energy': '/assets/energy/enriching.webp',
-  'Legacy Energy': '/assets/energy/legacy.png',
-  'Neo Upper Energy': '/assets/energy/neo-upper.png',
-  'Rock Fighting Energy': '/assets/energy/rock-fighting.webp',
-  'Growth Grass Energy': '/assets/energy/growth-grass.webp',
-  'Telepath Psychic Energy': '/assets/energy/telepath-psychic.webp',
+export type EnergySymbolInfo = {
+  type: string;
+  label: string;
+  letter: string;
+  color: string;
+  textColor: string;
+  borderColor: string;
 };
 
-export function energyIconSrc(card: { name?: string; fullName?: string; energyType?: string | number }): string {
-  const name = card.name || card.fullName || '';
-  if (customEnergyIcons[name]) {
-    return customEnergyIcons[name];
-  }
-  const basic = basicEnergyIcons.find(([pattern]) => pattern.test(name));
-  const type = basic?.[1] ?? normalizedTypeName(card.energyType);
-  return type ? `/assets/energy-icons/${type}.webp` : '/assets/energy-icons/colorless.webp';
+
+const energySymbols: Record<string, EnergySymbolInfo> = {
+  grass: symbol('grass', 'Grass', '#49a853', '#f6fff5', '#2f7d3c'),
+  fire: symbol('fire', 'Fire', '#e4563c', '#fff8f2', '#ae3027'),
+  water: symbol('water', 'Water', '#3f8fd3', '#f3fbff', '#2466a7'),
+  lightning: symbol('lightning', 'Lightning', '#f0c83f', '#2b2410', '#ba8d21'),
+  psychic: symbol('psychic', 'Psychic', '#a65aae', '#fff4ff', '#783f82'),
+  fighting: symbol('fighting', 'Fighting', '#b87942', '#fff8ef', '#865325'),
+  darkness: symbol('darkness', 'Darkness', '#4a4d57', '#f7f8fb', '#2d3038'),
+  metal: symbol('metal', 'Metal', '#9da8ae', '#172027', '#707b82'),
+  colorless: symbol('colorless', 'Colorless', '#c7c9c2', '#202522', '#90948b'),
+  fairy: symbol('fairy', 'Fairy', '#ee8cbd', '#fff7fc', '#bf5d91'),
+  dragon: symbol('dragon', 'Dragon', '#c89b31', '#fff8e8', '#8d6a1d'),
+};
+
+function symbol(type: string, label: string, color: string, textColor: string, borderColor: string): EnergySymbolInfo {
+  return {
+    type,
+    label,
+    letter: type === 'fire' ? 'R' : type === 'fairy' ? 'Y' : label[0],
+    color,
+    textColor,
+    borderColor,
+  };
+}
+
+export function energySymbolInfo(card: { name?: string; fullName?: string; energyType?: string | number }): EnergySymbolInfo {
+  const name = ((card.name ?? '') + ' ' + (card.fullName ?? '')).trim();
+  const basic = basicEnergyTypes.find(([pattern]) => pattern.test(name));
+  const type = basic?.[1] ?? normalizedTypeName(card.energyType) ?? 'colorless';
+  return energySymbolInfoForType(type);
+}
+
+export function energySymbolInfoForType(cardType: string | number | undefined): EnergySymbolInfo {
+  const type = normalizedTypeName(cardType) ?? 'colorless';
+  return energySymbols[type] ?? energySymbols.colorless;
 }
 
 export function normalizedTypeName(cardType: string | number | undefined): string | undefined {
@@ -93,23 +108,19 @@ export function normalizedTypeName(cardType: string | number | undefined): strin
       f: 'fighting',
       fighting: 'fighting',
       d: 'darkness',
+      dark: 'darkness',
       darkness: 'darkness',
       m: 'metal',
       metal: 'metal',
       c: 'colorless',
       colorless: 'colorless',
       fairy: 'fairy',
+      y: 'fairy',
       dragon: 'dragon',
     }[normalized] ?? undefined
   );
 }
 
-export function pokemonTypeIconSrc(cardType: string | number | undefined): string | undefined {
-  const type = normalizedTypeName(cardType);
-  return type ? `/assets/energy-icons/${type}.webp` : undefined;
-}
-
 export function pokemonTypeLabelFor(cardType: string | number | undefined): string {
-  const type = normalizedTypeName(cardType);
-  return type ? type[0].toUpperCase() + type.slice(1) : 'Pokemon';
+  return cardType === undefined || cardType === null ? 'Pokemon' : energySymbolInfoForType(cardType).label;
 }

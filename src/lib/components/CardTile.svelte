@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { cardBackImageUrl, cardFaceImageUrl } from '../game/cardAssets';
   import type { CardView } from '../game/types';
 
   type Props = {
@@ -35,19 +36,29 @@
 
   let failedImageUrl = $state('');
 
-  let imageUrl = $derived(faceDown ? '/assets/cardback.png' : card?.imageUrl);
+  let imageUrl = $derived(faceDown ? cardBackImageUrl() : cardFaceImageUrl(card));
   let lastImageUrl = $state<string | undefined>();
   let showImage = $derived(!!imageUrl && failedImageUrl !== imageUrl);
   let label = $derived(faceDown ? 'Card' : (card?.name ?? 'Empty'));
+  let setLabel = $derived(!faceDown && card?.set ? [card.set, card.setNumber].filter(Boolean).join(' ') : '');
   let typeClass = $derived(faceDown
     ? 'back'
-    : card?.energyType !== undefined || card?.name?.includes('Energy')
+    : card?.energyType !== undefined || card?.superType === 'Energy' || card?.name?.includes('Energy')
       ? 'energy'
-      : card?.trainerType !== undefined
+      : card?.trainerType !== undefined || card?.superType === 'Trainer'
         ? 'trainer'
         : card
           ? 'pokemon'
           : 'empty');
+  let typeLabel = $derived(faceDown
+    ? 'CABT'
+    : typeClass === 'energy'
+      ? 'Energy'
+      : typeClass === 'trainer'
+        ? 'Trainer'
+        : typeClass === 'pokemon'
+          ? 'Pokemon'
+          : 'Card');
 
   $effect(() => {
     if (imageUrl !== lastImageUrl) {
@@ -83,10 +94,13 @@
     {#if showImage}
       <img src={imageUrl} alt="" loading="lazy" decoding="async" draggable="false" onerror={() => (failedImageUrl = imageUrl ?? '')} />
     {:else}
-      <span class="fallback-name">{label}</span>
-      {#if card?.set}
-        <span class="fallback-set">{card.set} {card.setNumber}</span>
-      {/if}
+      <span class="fallback-card">
+        <span class="fallback-kind">{typeLabel}</span>
+        <span class="fallback-name">{label}</span>
+        {#if setLabel}
+          <span class="fallback-set">{setLabel}</span>
+        {/if}
+      </span>
     {/if}
     {#if damage > 0}
       <span class="damage-counter" class:triple-digit={damage >= 100} title={`${damage} damage`}>
@@ -109,10 +123,13 @@
     {#if showImage}
       <img src={imageUrl} alt="" loading="lazy" decoding="async" draggable="false" onerror={() => (failedImageUrl = imageUrl ?? '')} />
     {:else}
-      <span class="fallback-name">{label}</span>
-      {#if card?.set}
-        <span class="fallback-set">{card.set} {card.setNumber}</span>
-      {/if}
+      <span class="fallback-card">
+        <span class="fallback-kind">{typeLabel}</span>
+        <span class="fallback-name">{label}</span>
+        {#if setLabel}
+          <span class="fallback-set">{setLabel}</span>
+        {/if}
+      </span>
     {/if}
     {#if damage > 0}
       <span class="damage-counter" class:triple-digit={damage >= 100} title={`${damage} damage`}>
@@ -129,7 +146,7 @@
     width: var(--card-w, clamp(58px, 5.3vw, 88px));
     aspect-ratio: 63 / 88;
     display: grid;
-    place-items: center;
+    place-items: stretch;
     padding: 0;
     overflow: hidden;
     border: 0;
@@ -179,6 +196,83 @@
     -webkit-user-drag: none;
   }
 
+  .fallback-card {
+    position: relative;
+    display: grid;
+    grid-template-rows: minmax(14px, 0.16fr) 1fr minmax(14px, 0.18fr);
+    align-items: center;
+    justify-items: center;
+    height: 100%;
+    padding: 8% 8% 7%;
+    border: 1px solid rgba(52, 64, 78, 0.18);
+    border-radius: inherit;
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(255, 255, 255, 0) 28%),
+      linear-gradient(145deg, rgba(248, 250, 252, 0.92), rgba(226, 232, 240, 0.94));
+    color: #18212d;
+    box-sizing: border-box;
+  }
+
+  .card-tile.pokemon .fallback-card {
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.7), rgba(255, 255, 255, 0) 30%),
+      linear-gradient(145deg, #eaf4ee, #b8d7c4);
+  }
+
+  .card-tile.energy .fallback-card {
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(255, 255, 255, 0) 30%),
+      linear-gradient(145deg, #fff6c2, #dfc04d);
+  }
+
+  .card-tile.trainer .fallback-card {
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(255, 255, 255, 0) 30%),
+      linear-gradient(145deg, #f8fafc, #cbd5e1);
+  }
+
+  .card-tile.back .fallback-card {
+    background:
+      linear-gradient(135deg, rgba(255, 255, 255, 0.1), transparent 28%),
+      repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.08) 0 6px, transparent 6px 12px),
+      linear-gradient(145deg, #203654, #111a2c);
+    color: #edf4ff;
+  }
+
+  .fallback-kind,
+  .fallback-set {
+    max-width: 100%;
+    overflow: hidden;
+    color: rgba(24, 33, 45, 0.68);
+    font-size: clamp(7px, calc(var(--card-w, 88px) * 0.105), 10px);
+    font-weight: 850;
+    letter-spacing: 0;
+    line-height: 1;
+    text-overflow: ellipsis;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+
+  .card-tile.back .fallback-kind,
+  .card-tile.back .fallback-set {
+    color: rgba(237, 244, 255, 0.76);
+  }
+
+  .fallback-name {
+    display: -webkit-box;
+    max-width: 100%;
+    overflow: hidden;
+    text-align: center;
+    color: inherit;
+    font-size: clamp(9px, calc(var(--card-w, 88px) * 0.14), 13px);
+    font-weight: 950;
+    letter-spacing: 0;
+    line-height: 1.08;
+    overflow-wrap: anywhere;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 5;
+  }
+
   .damage-counter {
     position: absolute;
     top: 32%;
@@ -215,32 +309,5 @@
 
   .damage-counter.triple-digit {
     font-size: clamp(13px, calc(var(--slot-card-w, var(--card-w, 88px)) * 0.165), 26px);
-  }
-
-  .fallback-name,
-  .fallback-set {
-    padding: 0 7px;
-    text-align: center;
-    line-height: 1.08;
-  }
-
-  .fallback-name {
-    align-self: end;
-    font-size: 11px;
-    font-weight: 900;
-  }
-
-  .fallback-set {
-    align-self: start;
-    color: #66707c;
-    font-size: 9px;
-  }
-
-  .card-tile.energy {
-    background: linear-gradient(#fff7cc, #e7c95b);
-  }
-
-  .card-tile.trainer {
-    background: linear-gradient(#fafafa, #d8dde4);
   }
 </style>

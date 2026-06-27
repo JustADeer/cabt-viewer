@@ -2,6 +2,7 @@
   import CardTile from './CardTile.svelte';
   import DeckDiscardAnimation from './DeckDiscardAnimation.svelte';
   import DeckShuffleAnimation from './DeckShuffleAnimation.svelte';
+  import { cardBackCssVar } from '../game/cardAssets';
   import type { CardView, PlayerView } from '../game/types';
   import type { ActionTimelineEvent } from '../game/types';
 
@@ -89,7 +90,7 @@
         {#each visiblePrizeCards(topPlayer.prizesLeft) as index}
           <span
             data-card-anchor={`player:${topPlayer.index}:prize:${index}`}
-            style={`--row: ${Math.floor(index / 2)}; --col: ${index % 2};`}
+            style={`--row: ${Math.floor(index / 2)}; --col: ${index % 2}; ${cardBackCssVar()}`}
           ></span>
         {/each}
       </div>
@@ -99,7 +100,7 @@
         <span
           bind:this={topDeckPileElement}
           class="stack-pile deck-pile"
-          style={deckPileStyle(topPlayer.deckCount, -1)}
+          style={`${deckPileStyle(topPlayer.deckCount, -1)}; ${cardBackCssVar()}`}
           title={`${topPlayer.name} deck`}
         >
           <span class="card-anchor" data-card-anchor={`player:${topPlayer.index}:deck`}></span>
@@ -170,7 +171,7 @@
         {#each visiblePrizeCards(bottomPlayer.prizesLeft) as index}
           <span
             data-card-anchor={`player:${bottomPlayer.index}:prize:${index}`}
-            style={`--row: ${Math.floor(index / 2)}; --col: ${index % 2};`}
+            style={`--row: ${Math.floor(index / 2)}; --col: ${index % 2}; ${cardBackCssVar()}`}
           ></span>
         {/each}
       </div>
@@ -180,7 +181,7 @@
         <span
           bind:this={bottomDeckPileElement}
           class="stack-pile deck-pile"
-          style={deckPileStyle(bottomPlayer.deckCount, 1)}
+          style={`${deckPileStyle(bottomPlayer.deckCount, 1)}; ${cardBackCssVar()}`}
           title={`${bottomPlayer.name} deck`}
         >
           <span class="card-anchor" data-card-anchor={`player:${bottomPlayer.index}:deck`}></span>
@@ -394,8 +395,12 @@
     inset: 0;
     border-radius: inherit;
     background:
-      var(--cardback-shade),
-      url("/assets/cardback.png") center / cover no-repeat;
+      var(--card-back-image, var(--cardback-shade)),
+      linear-gradient(135deg, rgba(255, 255, 255, 0.1), transparent 28%),
+      repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.08) 0 6px, transparent 6px 12px),
+      linear-gradient(145deg, #203654, #111a2c);
+    background-size: cover, auto, auto, auto;
+    background-position: center;
   }
 
   .deck-card-face {
@@ -528,8 +533,12 @@
     border-radius: 4px;
     border: 1px solid var(--prize-border);
     background:
-      var(--cardback-shade),
-      url("/assets/cardback.png") center / cover no-repeat;
+      var(--card-back-image, var(--cardback-shade)),
+      linear-gradient(135deg, rgba(255, 255, 255, 0.1), transparent 28%),
+      repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.08) 0 6px, transparent 6px 12px),
+      linear-gradient(145deg, #203654, #111a2c);
+    background-size: cover, auto, auto, auto;
+    background-position: center;
     box-shadow: 0 3px 8px rgba(23, 30, 38, 0.16);
   }
 
