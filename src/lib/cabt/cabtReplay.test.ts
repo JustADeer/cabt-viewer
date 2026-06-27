@@ -1204,6 +1204,67 @@ describe('cabtReplayToSnapshot', () => {
     expect(step.animationPhases?.[1].view.players[0].deckCount).toBe(43);
   });
 
+  it('builds a deck-to-board placement phase for searched Pokemon put onto the bench', () => {
+    const snapshot = cabtReplayToSnapshot({
+      visualize: [{
+        current: {
+          turn: 2,
+          yourIndex: 0,
+          result: -1,
+          players: [{
+            active: [{ id: 721, serial: 4, hp: 150, maxHp: 150 }],
+            bench: [],
+            benchMax: 5,
+            hand: [],
+            deckCount: 50,
+            prize: [],
+          }, {
+            active: [],
+            bench: [],
+            benchMax: 5,
+            handCount: 0,
+            deckCount: 50,
+            prize: [],
+          }],
+        },
+      }, {
+        logs: [
+          { type: 'MoveCard', playerIndex: 0, cardId: 722, serial: 6, fromArea: CabtAreaType.DECK, toArea: CabtAreaType.BENCH },
+          { type: 'Shuffle', playerIndex: 0 },
+        ],
+        current: {
+          turn: 2,
+          yourIndex: 0,
+          result: -1,
+          players: [{
+            active: [{ id: 721, serial: 4, hp: 150, maxHp: 150 }],
+            bench: [{ id: 722, serial: 6, hp: 90, maxHp: 90 }],
+            benchMax: 5,
+            hand: [],
+            deckCount: 49,
+            prize: [],
+          }, {
+            active: [],
+            bench: [],
+            benchMax: 5,
+            handCount: 0,
+            deckCount: 50,
+            prize: [],
+          }],
+        },
+      }],
+    });
+
+    const step = snapshot.steps[1];
+    expect(step.animationPhases?.map((phase) => phase.key.replace(/:\d+$/, ''))).toEqual([
+      'DeckBoardPlace',
+      'Shuffle',
+    ]);
+    expect(step.animationPhases?.[0].view.players[0].bench[0].pokemon?.serial).toBe(6);
+    expect(step.animationPhases?.[0].view.players[0].deckCount).toBe(49);
+    expect(step.animationPhases?.[1].view.players[0].bench[0].pokemon?.serial).toBe(6);
+  });
+
   it('coalesces Waitress-style reveal, attach, return, and shuffle into one replay step', () => {
     const snapshot = cabtReplayToSnapshot({
       visualize: [{
@@ -1742,6 +1803,77 @@ describe('cabtReplayToSnapshot', () => {
     expect(snapshot.views[step.stateIndex].players[1].discard.at(-1)?.serial).toBe(64);
   });
 
+  it('holds attached energy in the source view while it moves to discard', () => {
+    const snapshot = cabtReplayToSnapshot({
+      visualize: [{
+        current: {
+          turn: 4,
+          yourIndex: 0,
+          result: -1,
+          players: [{
+            active: [{
+              id: 721,
+              serial: 64,
+              hp: 150,
+              maxHp: 150,
+              energyCards: [{ id: 3, serial: 91 }],
+            }],
+            bench: [],
+            benchMax: 5,
+            handCount: 0,
+            deckCount: 45,
+            discard: [],
+            prize: [],
+          }, {
+            active: [],
+            bench: [],
+            benchMax: 5,
+            handCount: 0,
+            deckCount: 46,
+            prize: [],
+          }],
+        },
+      }, {
+        logs: [
+          { type: 'MoveCard', playerIndex: 0, cardId: 3, serial: 91, fromArea: CabtAreaType.ENERGY, toArea: CabtAreaType.DISCARD },
+        ],
+        current: {
+          turn: 4,
+          yourIndex: 0,
+          result: -1,
+          players: [{
+            active: [{
+              id: 721,
+              serial: 64,
+              hp: 150,
+              maxHp: 150,
+              energyCards: [],
+            }],
+            bench: [],
+            benchMax: 5,
+            handCount: 0,
+            deckCount: 45,
+            discard: [{ id: 3, serial: 91 }],
+            prize: [],
+          }, {
+            active: [],
+            bench: [],
+            benchMax: 5,
+            handCount: 0,
+            deckCount: 46,
+            prize: [],
+          }],
+        },
+      }],
+    });
+
+    const step = snapshot.steps[1];
+    expect(step.animationPhases?.map((phase) => phase.key.replace(/:\d+:.+$/, ''))).toEqual(['AttachedMove']);
+    expect(step.animationPhases?.[0].view.players[0].active.energy.map((card) => card.serial)).toEqual([91]);
+    expect(snapshot.views[step.stateIndex].players[0].active.energy).toHaveLength(0);
+    expect(snapshot.views[step.stateIndex].players[0].discard.map((card) => card.serial)).toEqual([91]);
+  });
+
   it('holds the source board while a benched Pokemon is promoted active', () => {
     const snapshot = cabtReplayToSnapshot({
       visualize: [{
@@ -1858,5 +1990,71 @@ describe('cabtReplayToSnapshot', () => {
     expect(step.animationPhases?.[0].view.players[0].bench[0].pokemon?.serial).toBe(67);
     expect(snapshot.views[step.stateIndex].players[0].active.pokemon?.serial).toBe(67);
     expect(snapshot.views[step.stateIndex].players[0].bench[0].pokemon?.serial).toBe(64);
+  });
+
+  it('holds the source board while a Switch log swaps active and benched Pokemon', () => {
+    const snapshot = cabtReplayToSnapshot({
+      visualize: [{
+        current: {
+          turn: 4,
+          yourIndex: 0,
+          result: -1,
+          players: [{
+            active: [{ id: 304, serial: 79, hp: 150, maxHp: 150 }],
+            bench: [{ id: 878, serial: 81, hp: 90, maxHp: 90 }],
+            benchMax: 5,
+            handCount: 0,
+            deckCount: 45,
+            prize: [],
+          }, {
+            active: [],
+            bench: [],
+            benchMax: 5,
+            handCount: 0,
+            deckCount: 46,
+            prize: [],
+          }],
+        },
+      }, {
+        logs: [
+          {
+            type: 'Switch',
+            playerIndex: 0,
+            cardIdActive: 304,
+            serialActive: 79,
+            cardIdBench: 878,
+            serialBench: 81,
+          },
+        ],
+        current: {
+          turn: 4,
+          yourIndex: 0,
+          result: -1,
+          players: [{
+            active: [{ id: 878, serial: 81, hp: 90, maxHp: 90 }],
+            bench: [{ id: 304, serial: 79, hp: 150, maxHp: 150 }],
+            benchMax: 5,
+            handCount: 0,
+            deckCount: 45,
+            prize: [],
+          }, {
+            active: [],
+            bench: [],
+            benchMax: 5,
+            handCount: 0,
+            deckCount: 46,
+            prize: [],
+          }],
+        },
+      }],
+    });
+
+    const step = snapshot.steps[1];
+    expect(step.animationPhases?.map((phase) => phase.key)).toEqual(['BoardMove:0']);
+    expect(step.animationPhases?.[0].actionTimeline).toHaveLength(1);
+    expect(step.animationPhases?.[0].view.players[0].active.pokemon?.serial).toBe(79);
+    expect(step.animationPhases?.[0].view.players[0].bench[0].pokemon?.serial).toBe(81);
+    expect(snapshot.views[step.stateIndex].players[0].active.pokemon?.serial).toBe(81);
+    expect(snapshot.views[step.stateIndex].players[0].bench[0].pokemon?.serial).toBe(79);
   });
 });

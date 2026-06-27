@@ -213,6 +213,7 @@ npm run dev       # local engine server + Vite dev server
 npm run dev:lan   # same as dev, but binds to 0.0.0.0 for LAN testing
 npm run dev:web   # Vite dev server only
 npm run dev:web:lan
+npm run audit:animations -- --source kaggle --days 2 --episodes-per-day 6
 npm run generate:cabt-data:docker
 npm test          # Vitest suite
 npm run build     # TypeScript + production build

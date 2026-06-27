@@ -86,6 +86,21 @@ describe('actionAnimationStartMs', () => {
     expect(actionAnimationStartMs(events, events[2])).toBe(actionAnimationTiming.boardMoveMs);
   });
 
+  it('sequences Switch as a single board move before follow-up effects', () => {
+    const events: ActionTimelineEvent[] = [
+      event(1, 'Switch', {
+        cardIdActive: 304,
+        cardIdBench: 878,
+        serialActive: 79,
+        serialBench: 81,
+      }),
+      event(2, 'Draw', { cardId: 3, serial: 12 }),
+    ];
+
+    expect(actionAnimationStartMs(events, events[0])).toBe(0);
+    expect(actionAnimationStartMs(events, events[1])).toBe(actionAnimationTiming.boardMoveMs);
+  });
+
   it('sequences deck reveal cards after a played supporter', () => {
     const events: ActionTimelineEvent[] = [
       event(1, 'Play', { cardId: 1235, serial: 26 }),
@@ -108,6 +123,16 @@ describe('actionAnimationStartMs', () => {
     expect(actionAnimationStartMs(events, events[2])).toBe(actionAnimationTiming.handMoveMs + actionAnimationTiming.deckRevealMs);
   });
 
+  it('sequences deck-to-board placement before follow-up effects', () => {
+    const events: ActionTimelineEvent[] = [
+      event(1, 'MoveCard', { cardId: 722, serial: 13, fromArea: CabtAreaType.DECK, toArea: CabtAreaType.BENCH }),
+      event(2, 'Shuffle', {}),
+    ];
+
+    expect(actionAnimationStartMs(events, events[0])).toBe(0);
+    expect(actionAnimationStartMs(events, events[1])).toBe(actionAnimationTiming.boardMoveMs);
+  });
+
   it('sequences revealed cards returning before the follow-up shuffle', () => {
     const events: ActionTimelineEvent[] = [
       event(1, 'MoveCard', { cardId: 3, serial: 58, fromArea: CabtAreaType.LOOKING, toArea: CabtAreaType.DECK }),
@@ -121,6 +146,16 @@ describe('actionAnimationStartMs', () => {
     );
   });
 
+  it('sequences revealed cards taken to hand before follow-up effects', () => {
+    const events: ActionTimelineEvent[] = [
+      event(1, 'MoveCard', { cardId: 1158, serial: 58, fromArea: CabtAreaType.LOOKING, toArea: CabtAreaType.HAND }),
+      event(2, 'Shuffle', {}),
+    ];
+
+    expect(actionAnimationStartMs(events, events[0])).toBe(0);
+    expect(actionAnimationStartMs(events, events[1])).toBe(actionAnimationTiming.handMoveMs);
+  });
+
   it('sequences Prize takes before follow-up effects', () => {
     const events: ActionTimelineEvent[] = [
       event(1, 'MoveCard', { cardId: 96, serial: 120, fromArea: CabtAreaType.PRIZE, toArea: CabtAreaType.HAND }),
@@ -132,6 +167,16 @@ describe('actionAnimationStartMs', () => {
     expect(actionAnimationStartMs(events, events[2])).toBe(
       actionAnimationTiming.prizeTakeMs + actionAnimationTiming.prizeTakeStepMs,
     );
+  });
+
+  it('sequences attached energy moves before follow-up effects', () => {
+    const events: ActionTimelineEvent[] = [
+      event(1, 'MoveCard', { cardId: 3, serial: 12, fromArea: CabtAreaType.ENERGY, toArea: CabtAreaType.DISCARD }),
+      event(2, 'Draw', { cardId: 4, serial: 13 }),
+    ];
+
+    expect(actionAnimationStartMs(events, events[0])).toBe(0);
+    expect(actionAnimationStartMs(events, events[1])).toBe(actionAnimationTiming.handMoveMs);
   });
 });
 

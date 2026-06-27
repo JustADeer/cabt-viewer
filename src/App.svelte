@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import ActiveFocus from './lib/components/ActiveFocus.svelte';
   import AppHeader from './lib/components/AppHeader.svelte';
+  import AttachedCardMoveAnimation from './lib/components/AttachedCardMoveAnimation.svelte';
   import AttackAnimation from './lib/components/AttackAnimation.svelte';
   import BoardLayer from './lib/components/BoardLayer.svelte';
   import BoardPromptStrip from './lib/components/prompts/BoardPromptStrip.svelte';
@@ -1415,6 +1416,12 @@
         />
 
         <HandResetAnimation
+          events={game.actionTimeline ?? []}
+          scopeKey={animationScopeKey}
+          {replayMode}
+        />
+
+        <AttachedCardMoveAnimation
           events={game.actionTimeline ?? []}
           scopeKey={animationScopeKey}
           {replayMode}

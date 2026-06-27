@@ -655,7 +655,9 @@ function persistentActionLabel(label: string, events: ReplayStep['actionTimeline
     || phase.key.startsWith('DeckDiscard:')
     || phase.key.startsWith('DeckReveal:')
     || phase.key.startsWith('DeckSearchReveal:')
+    || phase.key.startsWith('DeckBoardPlace:')
     || phase.key.startsWith('DeckRevealReturn:')
+    || phase.key.startsWith('DeckRevealTake:')
     || phase.key.startsWith('Draw:')
   );
   if (!hasEffectPhase) {
@@ -688,8 +690,20 @@ function persistentActionLabel(label: string, events: ReplayStep['actionTimeline
         : `revealed ${count} cards from their deck and put them into their hand`);
       continue;
     }
+    if (phase.key.startsWith('DeckBoardPlace:')) {
+      clauses.push(count === 1
+        ? 'put a Pokemon from their deck onto the board'
+        : `put ${count} Pokemon from their deck onto the board`);
+      continue;
+    }
     if (phase.key.startsWith('DeckRevealReturn:')) {
       clauses.push(`returned ${count} revealed ${plural(count, 'card')} to their deck`);
+      continue;
+    }
+    if (phase.key.startsWith('DeckRevealTake:')) {
+      clauses.push(count === 1
+        ? 'put a revealed card into their hand'
+        : `put ${count} revealed cards into their hand`);
       continue;
     }
     if (phase.key.startsWith('DeckReveal:')) {
@@ -861,6 +875,9 @@ function animationPhaseKeyForReplayEvent(event: ActionTimelineEvent, phases: Ani
   if (key.startsWith('KnockOut:') && !phases.some((phase) => phase.key.startsWith('Attack:'))) {
     return null;
   }
+  if (key.startsWith('AttachedMove:') && phases.some((phase) => phase.key.startsWith('KnockOut:'))) {
+    return null;
+  }
   return key;
 }
 
@@ -895,10 +912,20 @@ function animationPhaseLabel(phase: AnimationEventPhase): string | undefined {
   if (phase.key.startsWith('DeckRevealReturn:')) {
     return `${actor} returned ${cardEventCount} revealed ${plural(cardEventCount, 'card')} to their deck.`;
   }
+  if (phase.key.startsWith('DeckRevealTake:')) {
+    return cardEventCount === 1
+      ? event.message
+      : `${actor} put ${cardEventCount} revealed cards into their hand.`;
+  }
   if (phase.key.startsWith('DeckSearchReveal:')) {
     return cardEventCount === 1
       ? `${actor} revealed a card from their deck and put it into their hand.`
       : `${actor} revealed ${cardEventCount} cards from their deck and put them into their hand.`;
+  }
+  if (phase.key.startsWith('DeckBoardPlace:')) {
+    return cardEventCount === 1
+      ? event.message
+      : `${actor} put ${cardEventCount} Pokemon from their deck onto the board.`;
   }
   if (phase.key.startsWith('DeckReveal:')) {
     return `${actor} revealed the top ${cardEventCount} ${plural(cardEventCount, 'card')} of their deck.`;
@@ -926,6 +953,9 @@ function animationPhaseKey(event: ActionTimelineEvent): string | null {
   if (event.kind === 'Attack') {
     return `Attack:${playerKey}`;
   }
+  if (event.kind === 'Switch') {
+    return `BoardMove:${playerKey}`;
+  }
   if (event.kind === 'HpChange' || event.kind === 'HPChange') {
     return `Damage:${playerKey}`;
   }
@@ -951,8 +981,17 @@ function animationPhaseKey(event: ActionTimelineEvent): string | null {
     if (fromArea === CabtAreaType.DECK && toArea === CabtAreaType.HAND) {
       return `DeckSearchReveal:${playerKey}`;
     }
+    if (fromArea === CabtAreaType.DECK && (toArea === CabtAreaType.ACTIVE || toArea === CabtAreaType.BENCH)) {
+      return `DeckBoardPlace:${playerKey}`;
+    }
     if (fromArea === CabtAreaType.LOOKING && toArea === CabtAreaType.DECK) {
       return `DeckRevealReturn:${playerKey}`;
+    }
+    if (fromArea === CabtAreaType.LOOKING && toArea === CabtAreaType.HAND) {
+      return `DeckRevealTake:${playerKey}`;
+    }
+    if (isAttachedCardArea(fromArea) && isAttachedCardMoveDestination(toArea)) {
+      return `AttachedMove:${playerKey}:${fromArea}->${toArea}`;
     }
   }
   if (event.kind === 'Shuffle') {
@@ -970,7 +1009,8 @@ function animationPhaseUsesSourceView(key: string): boolean {
     || key.startsWith('Attack:')
     || key.startsWith('Damage:')
     || key.startsWith('KnockOut:')
-    || key.startsWith('BoardMove:');
+    || key.startsWith('BoardMove:')
+    || key.startsWith('AttachedMove:');
 }
 
 function animationPhaseNeedsDedicatedView(phase: AnimationEventPhase): boolean {
@@ -978,7 +1018,8 @@ function animationPhaseNeedsDedicatedView(phase: AnimationEventPhase): boolean {
     || phase.key.startsWith('Attack:')
     || phase.key.startsWith('Damage:')
     || phase.key.startsWith('KnockOut:')
-    || phase.key.startsWith('BoardMove:');
+    || phase.key.startsWith('BoardMove:')
+    || phase.key.startsWith('AttachedMove:');
 }
 
 function animationSourceViewForPhase(
@@ -996,6 +1037,12 @@ function animationSourceViewForPhase(
     return projectedViewForEvents(phaseStartView, currentView, phase.events, { deferMoveCardEvents: true });
   }
   if (phase.key.startsWith('BoardMove:')) {
+    return projectedViewForEvents(phaseStartView, currentView, phase.events, {
+      deferBoardStateEvents: true,
+      deferMoveCardEvents: true,
+    });
+  }
+  if (phase.key.startsWith('AttachedMove:')) {
     return projectedViewForEvents(phaseStartView, currentView, phase.events, { deferMoveCardEvents: true });
   }
   return phaseStartView;
@@ -1023,8 +1070,17 @@ function animationPhaseCardDurationMs(key: string): number {
   if (key.startsWith('DeckSearchReveal:')) {
     return actionAnimationTiming.deckRevealMs;
   }
+  if (key.startsWith('DeckBoardPlace:')) {
+    return actionAnimationTiming.boardMoveMs;
+  }
   if (key.startsWith('DeckRevealReturn:')) {
     return actionAnimationTiming.deckRevealReturnMs;
+  }
+  if (key.startsWith('DeckRevealTake:')) {
+    return actionAnimationTiming.handMoveMs;
+  }
+  if (key.startsWith('AttachedMove:')) {
+    return actionAnimationTiming.handMoveMs;
   }
   if (key.startsWith('Evolve:')) {
     return actionAnimationTiming.evolveMs;
@@ -1057,8 +1113,17 @@ function animationPhaseStepMs(key: string): number {
   if (key.startsWith('DeckSearchReveal:')) {
     return actionAnimationTiming.deckRevealStepMs;
   }
+  if (key.startsWith('DeckBoardPlace:')) {
+    return actionAnimationTiming.handMoveStepMs;
+  }
   if (key.startsWith('DeckRevealReturn:')) {
     return actionAnimationTiming.deckRevealReturnStepMs;
+  }
+  if (key.startsWith('DeckRevealTake:')) {
+    return actionAnimationTiming.handMoveStepMs;
+  }
+  if (key.startsWith('AttachedMove:')) {
+    return actionAnimationTiming.handMoveStepMs;
   }
   if (key.startsWith('Shuffle:')) {
     return actionAnimationTiming.deckShuffleMs;
@@ -1337,6 +1402,18 @@ function isBoardPositionMove(fromArea: number, toArea: number): boolean {
     || (fromArea === CabtAreaType.BENCH && toArea === CabtAreaType.ACTIVE);
 }
 
+function isAttachedCardArea(area: number): boolean {
+  return area === CabtAreaType.ENERGY
+    || area === CabtAreaType.TOOL
+    || area === CabtAreaType.PRE_EVOLUTION;
+}
+
+function isAttachedCardMoveDestination(area: number): boolean {
+  return area === CabtAreaType.DISCARD
+    || area === CabtAreaType.HAND
+    || area === CabtAreaType.DECK;
+}
+
 function isKnockOutEvent(event: ActionTimelineEvent): boolean {
   const params = event.params as Record<string, unknown> | undefined;
   return isMoveCardKind(event.kind)
@@ -1383,6 +1460,7 @@ function isBoardStateEvent(kind: string | undefined): boolean {
     'Attach',
     'Evolve',
     'Devolve',
+    'Switch',
     'HpChange',
     'HPChange',
     'Poisoned',
@@ -1423,6 +1501,10 @@ function applyReplayAreaDelta(
   if (area === CabtAreaType.DISCARD) {
     player.discard = currentPlayer.discard;
     return;
+  }
+  if (area === CabtAreaType.ENERGY || area === CabtAreaType.TOOL || area === CabtAreaType.PRE_EVOLUTION) {
+    player.active = currentPlayer.active;
+    player.bench = currentPlayer.bench;
   }
 }
 

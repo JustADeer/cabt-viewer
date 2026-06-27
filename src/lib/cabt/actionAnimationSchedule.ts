@@ -99,6 +99,14 @@ function animationPhaseForEvent(event: ActionTimelineEvent): AnimationPhase | nu
     };
   }
 
+  if (event.kind === 'Switch') {
+    return {
+      key: `BoardMove:${playerKey}`,
+      durationMs: actionAnimationTiming.boardMoveMs,
+      stepMs: 0,
+    };
+  }
+
   if (event.kind === 'HpChange' || event.kind === 'HPChange') {
     return {
       key: `Damage:${playerKey}`,
@@ -150,11 +158,32 @@ function animationPhaseForEvent(event: ActionTimelineEvent): AnimationPhase | nu
         stepMs: actionAnimationTiming.deckRevealStepMs,
       };
     }
+    if (fromArea === CabtAreaType.DECK && (toArea === CabtAreaType.ACTIVE || toArea === CabtAreaType.BENCH)) {
+      return {
+        key: `DeckBoardPlace:${playerKey}`,
+        durationMs: actionAnimationTiming.boardMoveMs,
+        stepMs: actionAnimationTiming.handMoveStepMs,
+      };
+    }
     if (fromArea === CabtAreaType.LOOKING && toArea === CabtAreaType.DECK) {
       return {
         key: `DeckRevealReturn:${playerKey}`,
         durationMs: actionAnimationTiming.deckRevealReturnMs,
         stepMs: actionAnimationTiming.deckRevealReturnStepMs,
+      };
+    }
+    if (fromArea === CabtAreaType.LOOKING && toArea === CabtAreaType.HAND) {
+      return {
+        key: `DeckRevealTake:${playerKey}`,
+        durationMs: actionAnimationTiming.handMoveMs,
+        stepMs: actionAnimationTiming.handMoveStepMs,
+      };
+    }
+    if (isAttachedCardArea(fromArea) && isAttachedCardMoveDestination(toArea)) {
+      return {
+        key: `AttachedMove:${playerKey}:${fromArea}->${toArea}`,
+        durationMs: actionAnimationTiming.handMoveMs,
+        stepMs: actionAnimationTiming.handMoveStepMs,
       };
     }
     if (fromArea === CabtAreaType.PRIZE && toArea === CabtAreaType.HAND) {
@@ -204,4 +233,16 @@ function isKnockOutMove(fromArea: number, toArea: number): boolean {
 function isBoardPositionMove(fromArea: number, toArea: number): boolean {
   return (fromArea === CabtAreaType.ACTIVE && toArea === CabtAreaType.BENCH)
     || (fromArea === CabtAreaType.BENCH && toArea === CabtAreaType.ACTIVE);
+}
+
+function isAttachedCardArea(area: number): boolean {
+  return area === CabtAreaType.ENERGY
+    || area === CabtAreaType.TOOL
+    || area === CabtAreaType.PRE_EVOLUTION;
+}
+
+function isAttachedCardMoveDestination(area: number): boolean {
+  return area === CabtAreaType.DISCARD
+    || area === CabtAreaType.HAND
+    || area === CabtAreaType.DECK;
 }

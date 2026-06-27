@@ -43,6 +43,7 @@
   let pokemonTypeLabel = $derived(pokemonTypeLabelFor(pokemonType));
   let toolPreview = $derived(slot.tools[0]);
   let toolPreviewImageUrl = $derived(cardFaceImageUrl(toolPreview));
+  let toolPreviewLabel = $derived(toolPreview?.name || toolPreview?.fullName || (slot.tools.length > 1 ? `${slot.tools.length} Tools` : 'Tool'));
   let toolNames = $derived(slot.tools.map((tool) => tool.fullName || tool.name).join(', '));
   let failedToolImageUrl = $state('');
   let lastToolImageUrl = $state<string | undefined>();
@@ -134,7 +135,7 @@
       </div>
     {/if}
     {#if slot.tools.length}
-      <div class="tool-card-preview" title={toolNames}>
+      <div class="tool-card-preview" data-tool-serial={toolPreview?.serial ?? undefined} title={toolNames}>
         {#if showToolImage}
           <img
             src={toolPreviewImageUrl}
@@ -145,7 +146,7 @@
             onerror={() => (failedToolImageUrl = toolPreviewImageUrl ?? '')}
           />
         {:else}
-          <span>{slot.tools.length > 1 ? `${slot.tools.length} Tools` : 'Tool'}</span>
+          <span class="tool-preview-label">{toolPreviewLabel}</span>
         {/if}
         {#if slot.tools.length > 1}
           <span class="tool-count" aria-label={`${slot.tools.length} attached tools`}>{slot.tools.length}</span>
@@ -410,13 +411,19 @@
     -webkit-user-drag: none;
   }
 
-  .tool-card-preview > span:not(.tool-count) {
-    padding: 0 5px;
+  .tool-card-preview > .tool-preview-label {
+    display: -webkit-box;
+    max-width: 100%;
+    padding: 0 4px;
+    overflow: hidden;
     color: #2f3742;
-    font-size: clamp(8px, calc(var(--slot-card-w) * 0.07), 11px);
+    font-size: clamp(7px, calc(var(--slot-card-w) * 0.062), 10px);
     font-weight: 900;
-    line-height: 1;
-    white-space: nowrap;
+    line-height: 0.96;
+    overflow-wrap: anywhere;
+    text-align: center;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
   }
 
   .tool-count {

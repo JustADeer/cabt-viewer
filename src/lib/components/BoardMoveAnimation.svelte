@@ -3,6 +3,7 @@
   import { actionAnimationBatchEvents, actionAnimationStartMs, actionAnimationTiming } from '../cabt/actionAnimationSchedule';
   import { cabtCardToView } from '../cabt/cardView';
   import { CabtAreaType } from '../cabt/types';
+  import { replayAnimationPhaseGapMs } from '../game/replay';
   import type { ActionTimelineEvent } from '../game/types';
 
   type Props = {
@@ -24,11 +25,17 @@
     startScale: number;
     correctionX: number;
     correctionY: number;
-    sourceZ: number;
-    targetZ: number;
     opponentSide: boolean;
     delayMs: number;
     measuring: boolean;
+  };
+
+  type BoardMoveInstruction = {
+    event: ActionTimelineEvent;
+    source: HTMLElement;
+    target: HTMLElement;
+    cardId: number;
+    key: string;
   };
 
   const boardMoveHandoffPollMs = 16;
@@ -98,28 +105,20 @@
       return;
     }
     const moveEvents = animationEvents.filter(isBoardMoveEvent);
-    for (const event of moveEvents) {
-      const source = sourceElementForEvent(event);
-      const target = targetElementForEvent(event, moveEvents);
-      const params = event.params as Record<string, unknown> | undefined;
-      const cardId = Number(params?.cardId);
-      if (!source || !target || !Number.isFinite(cardId)) {
-        continue;
-      }
-
-      const sourceElement = source;
-      const targetElement = target;
+    for (const instruction of moveEvents.flatMap((event) => moveInstructionsForEvent(event, moveEvents))) {
+      const sourceElement = instruction.source;
+      const targetElement = instruction.target;
       const sourceRect = localElementRect(sourceElement, boardPlane);
       const targetRect = localElementRect(targetElement, boardPlane);
       if (!sourceRect || !targetRect || sourceRect.width <= 0 || targetRect.width <= 0) {
         continue;
       }
 
-      const delayMs = actionAnimationStartMs(animationEvents, event);
+      const delayMs = actionAnimationStartMs(animationEvents, instruction.event);
       const sprite: BoardMoveSprite = {
-        id: `${event.id}-${params?.serial ?? cardId}`,
+        id: `${instruction.event.id}-${instruction.key}`,
         html: spriteHtml(sourceElement, targetElement),
-        fallbackName: cabtCardToView(cardId).name,
+        fallbackName: cabtCardToView(instruction.cardId).name,
         left: targetRect.left,
         top: targetRect.top,
         width: targetRect.width,
@@ -129,9 +128,7 @@
         startScale: sourceRect.width / targetRect.width,
         correctionX: 0,
         correctionY: 0,
-        sourceZ: boardSlotDepth(source),
-        targetZ: boardSlotDepth(target),
-        opponentSide: isOpponentSide(source) || isOpponentSide(target),
+        opponentSide: isOpponentSide(sourceElement) || isOpponentSide(targetElement),
         delayMs,
         measuring: true,
       };
@@ -139,14 +136,14 @@
       const startTimer = setTimeout(async () => {
         sprites = [...sprites, sprite];
         await tick();
-        if (!document.body.contains(source) || !document.body.contains(target)) {
+        if (!document.body.contains(sourceElement) || !document.body.contains(targetElement)) {
           sprites = sprites.filter((item) => item.id !== sprite.id);
           return;
         }
 
-        const correction = measureSpriteCorrection(sprite, target);
-        source.dataset.boardMoveAnimationHidden = 'true';
-        target.dataset.boardMoveAnimationHidden = 'true';
+        const correction = measureSpriteCorrection(sprite, targetElement);
+        sourceElement.dataset.boardMoveAnimationHidden = 'true';
+        targetElement.dataset.boardMoveAnimationHidden = 'true';
         sprites = sprites.map((item) => item.id === sprite.id
           ? {
               ...item,
@@ -156,42 +153,84 @@
             }
           : item);
         const finishTimer = setTimeout(() => {
-          handOffWhenDestinationReady(source, target, sprite, Date.now());
-        }, actionAnimationTiming.boardMoveMs);
+          handOffWhenDestinationReady(sourceElement, targetElement, sprite, Date.now());
+        }, actionAnimationTiming.boardMoveMs + replayHandoffHoldMs());
         timers.push(finishTimer);
       }, delayMs);
       timers.push(startTimer);
     }
   }
 
+  function replayHandoffHoldMs() {
+    return replayMode ? replayAnimationPhaseGapMs : 0;
+  }
+
   function isBoardMoveEvent(event: ActionTimelineEvent) {
     const params = event.params as Record<string, unknown> | undefined;
     const fromArea = Number(params?.fromArea);
     const toArea = Number(params?.toArea);
-    return event.kind === 'MoveCard'
-      && (
-        (fromArea === CabtAreaType.BENCH && toArea === CabtAreaType.ACTIVE)
-        || (fromArea === CabtAreaType.ACTIVE && toArea === CabtAreaType.BENCH)
+    return event.kind === 'Switch'
+      || (
+        event.kind === 'MoveCard'
+        && (
+          (fromArea === CabtAreaType.BENCH && toArea === CabtAreaType.ACTIVE)
+          || (fromArea === CabtAreaType.ACTIVE && toArea === CabtAreaType.BENCH)
+        )
       );
+  }
+
+  function moveInstructionsForEvent(event: ActionTimelineEvent, moveEvents: ActionTimelineEvent[]): BoardMoveInstruction[] {
+    if (event.kind === 'Switch') {
+      return switchMoveInstructions(event);
+    }
+
+    const source = sourceElementForEvent(event);
+    const target = targetElementForEvent(event, moveEvents);
+    const params = event.params as Record<string, unknown> | undefined;
+    const cardId = Number(params?.cardId);
+    if (!source || !target || !Number.isFinite(cardId)) {
+      return [];
+    }
+    return [{
+      event,
+      source,
+      target,
+      cardId,
+      key: `${params?.serial ?? cardId}`,
+    }];
+  }
+
+  function switchMoveInstructions(event: ActionTimelineEvent): BoardMoveInstruction[] {
+    const params = event.params as Record<string, unknown> | undefined;
+    const activeCardId = Number(params?.cardIdActive);
+    const benchCardId = Number(params?.cardIdBench);
+    const activeSource = pokemonElementForIdentity(Number(params?.serialActive), activeCardId, event.playerIndex);
+    const benchSource = pokemonElementForIdentity(Number(params?.serialBench), benchCardId, event.playerIndex);
+    if (!activeSource || !benchSource || !Number.isFinite(activeCardId) || !Number.isFinite(benchCardId)) {
+      return [];
+    }
+    return [
+      {
+        event,
+        source: activeSource,
+        target: benchSource,
+        cardId: activeCardId,
+        key: `active-${params?.serialActive ?? activeCardId}`,
+      },
+      {
+        event,
+        source: benchSource,
+        target: activeSource,
+        cardId: benchCardId,
+        key: `bench-${params?.serialBench ?? benchCardId}`,
+      },
+    ];
   }
 
   function sourceElementForEvent(event: ActionTimelineEvent): HTMLElement | null {
     const params = event.params as Record<string, unknown> | undefined;
-    const serial = Number(params?.serial);
-    if (Number.isFinite(serial)) {
-      const bySerial = document.querySelector(`[data-pokemon-serial="${serial}"]`);
-      if (bySerial instanceof HTMLElement) {
-        return bySerial;
-      }
-    }
     const cardId = Number(params?.cardId);
-    if (Number.isFinite(cardId) && event.playerIndex !== undefined) {
-      const byCard = document.querySelector(`[data-owner-index="${event.playerIndex}"][data-pokemon-card-id="${cardId}"]`);
-      if (byCard instanceof HTMLElement) {
-        return byCard;
-      }
-    }
-    return null;
+    return pokemonElementForIdentity(Number(params?.serial), cardId, event.playerIndex);
   }
 
   function targetElementForEvent(event: ActionTimelineEvent, moveEvents: ActionTimelineEvent[]): HTMLElement | null {
@@ -236,14 +275,20 @@
     return element instanceof HTMLElement ? element : null;
   }
 
-  function boardSlotDepth(slotElement: HTMLElement): number {
-    if (slotElement.closest('.top-active-slot, .bottom-active-slot')) {
-      return 32;
+  function pokemonElementForIdentity(serial: number, cardId: number, playerIndex: number | undefined): HTMLElement | null {
+    if (Number.isFinite(serial)) {
+      const bySerial = document.querySelector(`[data-pokemon-serial="${serial}"]`);
+      if (bySerial instanceof HTMLElement) {
+        return bySerial;
+      }
     }
-    if (slotElement.closest('.bench-row')) {
-      return 16;
+    if (Number.isFinite(cardId) && playerIndex !== undefined) {
+      const byCard = document.querySelector(`[data-owner-index="${playerIndex}"][data-pokemon-card-id="${cardId}"]`);
+      if (byCard instanceof HTMLElement) {
+        return byCard;
+      }
     }
-    return 0;
+    return null;
   }
 
   function isOpponentSide(slotElement: HTMLElement): boolean {
@@ -353,8 +398,6 @@
       `--board-move-start-scale: ${sprite.startScale.toFixed(6)}`,
       `--board-move-correction-x: ${sprite.correctionX.toFixed(3)}px`,
       `--board-move-correction-y: ${sprite.correctionY.toFixed(3)}px`,
-      `--board-move-source-z: ${sprite.sourceZ}px`,
-      `--board-move-target-z: ${sprite.targetZ}px`,
     ].join('; ');
   }
 
@@ -403,7 +446,6 @@
     animation: none;
     transform:
       translate3d(0, 0, 0)
-      translateZ(var(--board-move-target-z))
       scale(1);
   }
 
@@ -495,13 +537,11 @@
           calc(var(--board-move-start-y) + var(--board-move-correction-y)),
           0
         )
-        translateZ(var(--board-move-source-z))
         scale(var(--board-move-start-scale));
     }
     100% {
       transform:
         translate3d(var(--board-move-correction-x), var(--board-move-correction-y), 0)
-        translateZ(var(--board-move-target-z))
         scale(1);
     }
   }
