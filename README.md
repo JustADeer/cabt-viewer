@@ -57,7 +57,7 @@ Manifest example:
 ```json
 {
   "cards": {
-    "provider": "scrydex",
+    "template": "/local-card-images/cards/{set}/{number}.png",
     "images": {
       "MEG-35": "/local-card-images/cards/MEG/35.png"
     }
@@ -77,21 +77,9 @@ image packs without committing those assets.
 
 Manifest image values may be same-origin paths like `/local-card-images/...` or
 absolute HTTPS URLs for images you host elsewhere. The app does not proxy or
-bundle those files; the browser loads the configured URLs directly. The manifest
-only needs `cardBack` or `energy` entries when you want to override those
-defaults.
-
-For Scrydex card-face URLs, set a source:
-
-```bash
-VITE_CABT_CARD_IMAGE_SOURCE=scrydex
-VITE_CABT_CARD_BACK_IMAGE_URL=/local-card-images/cardback.png
-VITE_CABT_ENERGY_IMAGE_TEMPLATE=/local-card-images/energy/{slug}.webp
-```
-
-The Scrydex source uses this repo's set map to build provider URLs for card
-faces. Leave the source unset to avoid generated external card-art URLs
-entirely.
+bundle those files; the browser loads the configured URLs directly. Add
+`cardBack` when you want a card-back image, and add `energy` entries when you
+want image-backed energy symbols from your own files.
 
 For a local mirror or your own hosted files, use a template instead:
 
@@ -103,7 +91,8 @@ VITE_CABT_ENERGY_IMAGE_TEMPLATE=/local-card-images/energy/{slug}.webp
 
 Template tokens are `{set}`, `{setId}`, `{number}`, `{numberPadded}`, `{name}`,
 and `{fullName}` for card faces. Energy-image templates support `{type}`,
-`{name}`, and `{slug}`.
+`{name}`, and `{slug}`. Use `{setId}` when your hosted image layout expects the
+app's mapped external set id instead of the raw CABT set code.
 
 Templates can also point at your own hosted images:
 

@@ -1,6 +1,6 @@
 {
   "cards": {
-    "provider": "scrydex",
+    "template": "/local-card-images/cards/{set}/{number}.png",
     "images": {
       "MEG-35": "/local-card-images/cards/MEG/35.png"
     }

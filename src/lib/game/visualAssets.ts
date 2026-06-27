@@ -7,7 +7,6 @@ export type VisualAssetManifest = {
 };
 
 export type VisualAssetManifestCards = {
-  provider?: 'scrydex';
   template?: string;
   images?: Record<string, string>;
 };

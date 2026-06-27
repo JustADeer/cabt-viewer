@@ -1,7 +1,6 @@
 import type { VisualAssetManifest } from './visualAssets';
 
 export type CardImageConfig = {
-  source?: string;
   template?: string;
   cardBackUrl?: string;
 };
@@ -72,10 +71,7 @@ export function resolveCardImageUrl(card: CardImageInput, config = cardImageConf
   if (template) {
     return cardImageUrlFromTemplate(template, card, setInfo, rawSetNumber);
   }
-  if (!scrydexCardImagesEnabled(config) || !setInfo) {
-    return undefined;
-  }
-  return scrydexCardImageUrl(setInfo.id, rawSetNumber);
+  return undefined;
 }
 
 export function resolveCardImageUrlFromManifest(card: CardImageInput, manifest: VisualAssetManifest | undefined): string | undefined {
@@ -95,31 +91,20 @@ export function resolveCardImageUrlFromManifest(card: CardImageInput, manifest: 
   if (cards.template) {
     return cardImageUrlFromTemplate(cards.template, card, setInfo, rawSetNumber);
   }
-  if (cards.provider === 'scrydex' && setInfo) {
-    return scrydexCardImageUrl(setInfo.id, rawSetNumber);
-  }
   return undefined;
 }
 
 export function resolveCardBackImageUrl(config = cardImageConfigFromEnv()): string | undefined {
-  return config.cardBackUrl?.trim() || (scrydexCardImagesEnabled(config) ? scrydexCardBackImageUrl() : undefined);
+  return config.cardBackUrl?.trim() || undefined;
 }
 
 export function resolveCardBackImageUrlFromManifest(manifest: VisualAssetManifest | undefined): string | undefined {
-  return manifest?.cardBack?.trim() || (manifest?.cards?.provider === 'scrydex' ? scrydexCardBackImageUrl() : undefined);
+  return manifest?.cardBack?.trim() || undefined;
 }
 
 export function hasConfiguredCardImageSource(config = cardImageConfigFromEnv(), manifest?: VisualAssetManifest): boolean {
-  return !!manifest?.cards || !!config.template?.trim() || scrydexCardImagesEnabled(config);
-}
-
-function scrydexCardImageUrl(setId: string, rawSetNumber: string): string {
-  const setNumber = encodeURIComponent(rawSetNumber);
-  return `https://images.scrydex.com/pokemon/${encodeURIComponent(setId)}-${setNumber}/large`;
-}
-
-function scrydexCardBackImageUrl(): string {
-  return 'https://images.scrydex.com/pokemon/large';
+  const cards = manifest?.cards;
+  return !!cards?.template?.trim() || !!cards?.images || !!config.template?.trim();
 }
 
 function manifestCardImageUrl(
@@ -171,21 +156,11 @@ function cardImageUrlFromTemplate(
   });
 }
 
-function scrydexCardImagesEnabled(config: CardImageConfig): boolean {
-  const source = config.source?.trim().toLowerCase();
-  return source === 'scrydex';
-}
-
 function cardImageConfigFromEnv(): CardImageConfig {
   return {
-    source: import.meta.env?.VITE_CABT_CARD_IMAGE_SOURCE ?? legacyCardImageSourceFromEnv(),
     template: import.meta.env?.VITE_CABT_CARD_IMAGE_TEMPLATE,
     cardBackUrl: import.meta.env?.VITE_CABT_CARD_BACK_IMAGE_URL,
   };
-}
-
-function legacyCardImageSourceFromEnv(): string | undefined {
-  return import.meta.env?.VITE_CABT_CARD_IMAGE_MODE === 'external' ? 'scrydex' : undefined;
 }
 
 export function getSetImageInfo(setCode: string | undefined): SetImageInfo | undefined {
