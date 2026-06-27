@@ -309,6 +309,8 @@ function resolvingTrainerContinuationFrom(
   startGroup: ReplayActionGroup,
   playEvent: ActionTimelineEvent,
 ): CardEffectContinuation | null {
+  // Archive hardening: add negative samples before widening this heuristic. A trainer
+  // that is already discarded in its Play frame should not swallow the next unrelated action.
   const playerIndex = playEvent.playerIndex;
   if (playerIndex === undefined) {
     return null;
