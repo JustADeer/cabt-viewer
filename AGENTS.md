@@ -93,6 +93,10 @@ the sprite out before the destination appears.
 When multiple sprites share a source or destination in the same phase, hidden
 DOM flags must be ref-counted so the first sprite to finish cannot reveal an
 element still owned by another sprite.
+Replay board-position moves, including Switch and active/bench swaps, should
+hold the source board hidden until the replay scope advances to the final view.
+Do not poll destination readiness or reveal those old slots from inside the
+animation component; the phase transition is the handoff.
 Cloned board-move sprites should force eager/synchronous image loading for
 visible card art and attached overlays; lazy image decoding can still cause a
 flash even when ownership and hidden flags are otherwise correct.

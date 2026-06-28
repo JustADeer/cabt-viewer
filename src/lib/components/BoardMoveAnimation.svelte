@@ -43,6 +43,7 @@
     cardId: number;
     serial?: number;
     waitForDestinationCard: boolean;
+    holdUntilScopeChange: boolean;
     toDeck: boolean;
     fromDeck: boolean;
     key: string;
@@ -178,6 +179,9 @@
               measuring: false,
             }
           : item);
+        if (instruction.holdUntilScopeChange) {
+          return;
+        }
         const finishTimer = setTimeout(() => {
           handOffWhenDestinationReady(sourceElement, targetElement, sprite, Date.now(), generation);
         }, boardMoveHandoffDelayMs(animationEvents, instruction, delayMs));
@@ -236,6 +240,20 @@
       && (toArea === CabtAreaType.ACTIVE || toArea === CabtAreaType.BENCH);
   }
 
+  function isBoardPositionMoveEvent(event: ActionTimelineEvent) {
+    const params = event.params as Record<string, unknown> | undefined;
+    const fromArea = Number(params?.fromArea);
+    const toArea = Number(params?.toArea);
+    return event.kind === 'Switch'
+      || (
+        event.kind === 'MoveCard'
+        && (
+          (fromArea === CabtAreaType.BENCH && toArea === CabtAreaType.ACTIVE)
+          || (fromArea === CabtAreaType.ACTIVE && toArea === CabtAreaType.BENCH)
+        )
+      );
+  }
+
   function moveInstructionsForEvent(event: ActionTimelineEvent, moveEvents: ActionTimelineEvent[]): BoardMoveInstruction[] {
     if (event.kind === 'Switch') {
       return switchMoveInstructions(event);
@@ -255,6 +273,7 @@
       cardId,
       serial: Number.isFinite(Number(params?.serial)) ? Number(params?.serial) : undefined,
       waitForDestinationCard: Number(params?.toArea) === CabtAreaType.DISCARD,
+      holdUntilScopeChange: replayMode && isBoardPositionMoveEvent(event),
       toDeck: Number(params?.toArea) === CabtAreaType.DECK,
       fromDeck: Number(params?.fromArea) === CabtAreaType.DECK,
       key: `${params?.serial ?? cardId}`,
@@ -278,6 +297,7 @@
         cardId: activeCardId,
         serial: Number.isFinite(Number(params?.serialActive)) ? Number(params?.serialActive) : undefined,
         waitForDestinationCard: false,
+        holdUntilScopeChange: replayMode,
         toDeck: false,
         fromDeck: false,
         key: `active-${params?.serialActive ?? activeCardId}`,
@@ -289,6 +309,7 @@
         cardId: benchCardId,
         serial: Number.isFinite(Number(params?.serialBench)) ? Number(params?.serialBench) : undefined,
         waitForDestinationCard: false,
+        holdUntilScopeChange: replayMode,
         toDeck: false,
         fromDeck: false,
         key: `bench-${params?.serialBench ?? benchCardId}`,
