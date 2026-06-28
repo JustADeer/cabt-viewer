@@ -1,5 +1,6 @@
 import type { GameView } from './types';
 import type { ActionTimelineEvent } from './types';
+import type { ReplayAnimationPhasePlan } from '../animations/replayAnimationPlan';
 
 export type ReplayPlayerInfo = {
   userId: number;
@@ -28,6 +29,7 @@ export type ReplayAnimationPhase = {
   view: GameView;
   actionTimeline: ActionTimelineEvent[];
   durationMs: number;
+  animationPlan?: ReplayAnimationPhasePlan;
 };
 
 export const replayAnimationPhaseGapMs = 120;
