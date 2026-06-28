@@ -489,7 +489,15 @@
     clone.removeAttribute('title');
     clone.removeAttribute('data-board-move-animation-hidden');
     clone.removeAttribute('data-reveal-animation-hidden');
+    prepareCloneImages(clone);
     return clone.outerHTML;
+  }
+
+  function prepareCloneImages(clone: HTMLElement) {
+    for (const image of clone.querySelectorAll('img')) {
+      image.loading = 'eager';
+      image.decoding = 'sync';
+    }
   }
 
   function handOffWhenDestinationReady(

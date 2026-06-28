@@ -141,8 +141,8 @@
           <img
             src={toolPreviewImageUrl}
             alt={toolPreview?.name || 'Pokemon Tool'}
-            loading="lazy"
-            decoding="async"
+            loading="eager"
+            decoding="sync"
             draggable="false"
             onerror={() => (failedToolImageUrl = toolPreviewImageUrl ?? '')}
           />

@@ -93,6 +93,9 @@ the sprite out before the destination appears.
 When multiple sprites share a source or destination in the same phase, hidden
 DOM flags must be ref-counted so the first sprite to finish cannot reveal an
 element still owned by another sprite.
+Cloned board-move sprites should force eager/synchronous image loading for
+visible card art and attached overlays; lazy image decoding can still cause a
+flash even when ownership and hidden flags are otherwise correct.
 
 Board-plane animations and viewport/hand animations are different coordinate
 spaces. A card that starts and ends on the tilted board should stay inside the
