@@ -281,6 +281,11 @@
         {#each visiblePrizeCards(topPlayer.prizesLeft) as index}
           <span
             data-card-anchor={`player:${topPlayer.index}:prize:${index}`}
+            data-animation-anchor="prize-card"
+            data-animation-anchor-key={`player:${topPlayer.index}:prize-card:${index}`}
+            data-animation-player={topPlayer.index}
+            data-animation-zone="prize"
+            data-animation-prize-index={index}
             style={`--row: ${Math.floor(index / 2)}; --col: ${index % 2}; ${cardBackCssVar()}`}
           ></span>
         {/each}
@@ -294,7 +299,14 @@
           style={`${deckPileStyle(topPlayer.deckCount, -1)}; ${cardBackCssVar()}`}
           title={`${topPlayer.name} deck`}
         >
-          <span class="card-anchor" data-card-anchor={`player:${topPlayer.index}:deck`}></span>
+          <span
+            class="card-anchor"
+            data-card-anchor={`player:${topPlayer.index}:deck`}
+            data-animation-anchor="deck-top"
+            data-animation-anchor-key={`player:${topPlayer.index}:deck-top`}
+            data-animation-player={topPlayer.index}
+            data-animation-zone="deck"
+          ></span>
           {#each visibleDeckLayers(topPlayer.deckCount) as layer, layerIndex}
             <span class="deck-card-layer" style={`--deck-layer: ${layerIndex};`}></span>
           {/each}
@@ -315,6 +327,10 @@
           class="stack-pile discard-pile"
           class:projected-hover={projectedHoverPile === 'top-discard'}
           data-card-anchor={`player:${topPlayer.index}:discard`}
+          data-animation-anchor="discard-pile"
+          data-animation-anchor-key={`player:${topPlayer.index}:discard-pile`}
+          data-animation-player={topPlayer.index}
+          data-animation-zone="discard"
           title={`${topPlayer.name} discard`}
           bind:this={topDiscardPileElement}
           onclick={() => showDiscard(topPlayer)}
@@ -326,6 +342,12 @@
                   class:discard-card-under={entry.layer === 'under'}
                   class:discard-card-top={entry.layer === 'top'}
                   class:resolving-discard-target={entry.layer === 'top' && isResolvingDiscardTarget(topPlayer.index, entry.card)}
+                  data-animation-anchor="discard-card"
+                  data-animation-anchor-key={`player:${topPlayer.index}:discard-card${entry.card.serial !== undefined ? `:serial:${entry.card.serial}` : ''}`}
+                  data-animation-player={topPlayer.index}
+                  data-animation-zone="discard"
+                  data-animation-card-serial={entry.card.serial ?? undefined}
+                  data-animation-card-id={entry.card.id ?? undefined}
                 >
                   <CardTile card={entry.card} compact />
                 </span>
@@ -348,6 +370,12 @@
         <span
           class="resolving-zone"
           data-card-anchor={`player:${topPlayer.index}:playZone`}
+          data-animation-anchor="play-zone-card"
+          data-animation-anchor-key={`player:${topPlayer.index}:play-zone-card${resolvingCard(topPlayer)?.serial !== undefined ? `:serial:${resolvingCard(topPlayer)?.serial}` : ''}`}
+          data-animation-player={topPlayer.index}
+          data-animation-zone="play-zone"
+          data-animation-card-serial={resolvingCard(topPlayer)?.serial ?? undefined}
+          data-animation-card-id={resolvingCard(topPlayer)?.id ?? undefined}
           title={`${topPlayer.name} played card`}
         >
           <CardTile card={resolvingCard(topPlayer)} compact />
@@ -375,6 +403,11 @@
         {#each visiblePrizeCards(bottomPlayer.prizesLeft) as index}
           <span
             data-card-anchor={`player:${bottomPlayer.index}:prize:${index}`}
+            data-animation-anchor="prize-card"
+            data-animation-anchor-key={`player:${bottomPlayer.index}:prize-card:${index}`}
+            data-animation-player={bottomPlayer.index}
+            data-animation-zone="prize"
+            data-animation-prize-index={index}
             style={`--row: ${Math.floor(index / 2)}; --col: ${index % 2}; ${cardBackCssVar()}`}
           ></span>
         {/each}
@@ -385,6 +418,12 @@
         <span
           class="resolving-zone"
           data-card-anchor={`player:${bottomPlayer.index}:playZone`}
+          data-animation-anchor="play-zone-card"
+          data-animation-anchor-key={`player:${bottomPlayer.index}:play-zone-card${resolvingCard(bottomPlayer)?.serial !== undefined ? `:serial:${resolvingCard(bottomPlayer)?.serial}` : ''}`}
+          data-animation-player={bottomPlayer.index}
+          data-animation-zone="play-zone"
+          data-animation-card-serial={resolvingCard(bottomPlayer)?.serial ?? undefined}
+          data-animation-card-id={resolvingCard(bottomPlayer)?.id ?? undefined}
           title={`${bottomPlayer.name} played card`}
         >
           <CardTile card={resolvingCard(bottomPlayer)} compact />
@@ -397,7 +436,14 @@
           style={`${deckPileStyle(bottomPlayer.deckCount, 1)}; ${cardBackCssVar()}`}
           title={`${bottomPlayer.name} deck`}
         >
-          <span class="card-anchor" data-card-anchor={`player:${bottomPlayer.index}:deck`}></span>
+          <span
+            class="card-anchor"
+            data-card-anchor={`player:${bottomPlayer.index}:deck`}
+            data-animation-anchor="deck-top"
+            data-animation-anchor-key={`player:${bottomPlayer.index}:deck-top`}
+            data-animation-player={bottomPlayer.index}
+            data-animation-zone="deck"
+          ></span>
           {#each visibleDeckLayers(bottomPlayer.deckCount) as layer, layerIndex}
             <span class="deck-card-layer" style={`--deck-layer: ${layerIndex};`}></span>
           {/each}
@@ -417,6 +463,10 @@
           class="stack-pile discard-pile"
           class:projected-hover={projectedHoverPile === 'bottom-discard'}
           data-card-anchor={`player:${bottomPlayer.index}:discard`}
+          data-animation-anchor="discard-pile"
+          data-animation-anchor-key={`player:${bottomPlayer.index}:discard-pile`}
+          data-animation-player={bottomPlayer.index}
+          data-animation-zone="discard"
           title={`${bottomPlayer.name} discard`}
           bind:this={bottomDiscardPileElement}
           onclick={() => showDiscard(bottomPlayer)}
@@ -428,6 +478,12 @@
                   class:discard-card-under={entry.layer === 'under'}
                   class:discard-card-top={entry.layer === 'top'}
                   class:resolving-discard-target={entry.layer === 'top' && isResolvingDiscardTarget(bottomPlayer.index, entry.card)}
+                  data-animation-anchor="discard-card"
+                  data-animation-anchor-key={`player:${bottomPlayer.index}:discard-card${entry.card.serial !== undefined ? `:serial:${entry.card.serial}` : ''}`}
+                  data-animation-player={bottomPlayer.index}
+                  data-animation-zone="discard"
+                  data-animation-card-serial={entry.card.serial ?? undefined}
+                  data-animation-card-id={entry.card.id ?? undefined}
                 >
                   <CardTile card={entry.card} compact />
                 </span>

@@ -86,6 +86,12 @@
   class={`board-slot ${placement}`}
   data-testid={`slot-${slot.ownerIndex}-${slot.slot}-${slot.index}`}
   data-card-anchor={`player:${slot.ownerIndex}:${slot.slot}:${slot.index}`}
+  data-animation-anchor="board-slot"
+  data-animation-anchor-key={`player:${slot.ownerIndex}:board-slot:${slot.slot}:${slot.index}`}
+  data-animation-player={slot.ownerIndex}
+  data-animation-zone="board"
+  data-animation-slot={slot.slot}
+  data-animation-slot-index={slot.index}
   data-owner-index={slot.ownerIndex}
   data-slot-kind={slot.slot}
   data-slot-index={slot.index}
@@ -104,7 +110,16 @@
   {/if}
 
   {#if slot.pokemon}
-    <CardTile card={slot.pokemon} damage={slot.damage} />
+    <CardTile
+      card={slot.pokemon}
+      damage={slot.damage}
+      animationAnchor="pokemon-card"
+      animationAnchorKey={`player:${slot.ownerIndex}:pokemon-card:${slot.slot}:${slot.index}${slot.pokemon.serial !== undefined ? `:serial:${slot.pokemon.serial}` : ''}`}
+      animationPlayerIndex={slot.ownerIndex}
+      animationZone="board"
+      animationSlot={slot.slot}
+      animationSlotIndex={slot.index}
+    />
     {#if displayHp || pokemonType !== undefined}
       <div class="pokemon-status">
         <span
@@ -126,6 +141,14 @@
       <div class="energy-badges" class:stacked-energy={stackedEnergy} title={`${slot.energy.length} attached energy`}>
         {#each slot.energy as energy, energyIndex}
           <span
+            data-animation-anchor="attached-energy"
+            data-animation-anchor-key={`player:${slot.ownerIndex}:attached-energy:${slot.slot}:${slot.index}${energy.serial !== undefined ? `:serial:${energy.serial}` : ''}`}
+            data-animation-player={slot.ownerIndex}
+            data-animation-zone="board"
+            data-animation-slot={slot.slot}
+            data-animation-slot-index={slot.index}
+            data-animation-card-serial={energy.serial ?? undefined}
+            data-animation-card-id={energy.id ?? undefined}
             data-energy-serial={energy.serial ?? undefined}
             class:pending-energy={hasPendingAttach(energy)}
             style={energyStackStyle(energyIndex)}
@@ -136,7 +159,19 @@
       </div>
     {/if}
     {#if slot.tools.length}
-      <div class="tool-card-preview" data-tool-serial={toolPreview?.serial ?? undefined} title={toolNames}>
+      <div
+        class="tool-card-preview"
+        data-animation-anchor="attached-tool"
+        data-animation-anchor-key={`player:${slot.ownerIndex}:attached-tool:${slot.slot}:${slot.index}${toolPreview?.serial !== undefined ? `:serial:${toolPreview.serial}` : ''}`}
+        data-animation-player={slot.ownerIndex}
+        data-animation-zone="board"
+        data-animation-slot={slot.slot}
+        data-animation-slot-index={slot.index}
+        data-animation-card-serial={toolPreview?.serial ?? undefined}
+        data-animation-card-id={toolPreview?.id ?? undefined}
+        data-tool-serial={toolPreview?.serial ?? undefined}
+        title={toolNames}
+      >
         {#if showToolImage}
           <img
             src={toolPreviewImageUrl}

@@ -101,6 +101,10 @@
   class="hand"
   data-card-count={player.hand.length}
   data-card-anchor={`player:${player.index}:hand`}
+  data-animation-anchor="hand"
+  data-animation-anchor-key={`player:${player.index}:hand`}
+  data-animation-player={player.index}
+  data-animation-zone="hand"
   onscroll={updateScrollIndicators}
 >
   {#each visibleHandEntries as entry (entry.key)}
@@ -110,6 +114,13 @@
     <div
       class="hand-card-frame"
       data-hand-card-slot={`player:${player.index}:hand:${index}`}
+      data-animation-anchor="hand-card"
+      data-animation-anchor-key={`player:${player.index}:hand-card:index:${index}${card.serial !== undefined ? `:serial:${card.serial}` : ''}`}
+      data-animation-player={player.index}
+      data-animation-zone="hand"
+      data-animation-hand-index={index}
+      data-animation-card-serial={card.serial ?? undefined}
+      data-animation-card-id={card.id ?? undefined}
       data-card-serial={card.serial ?? undefined}
       data-reveal-animation-hidden={card.animationHidden ? 'true' : undefined}
       animate:flip={{ duration: 180 }}

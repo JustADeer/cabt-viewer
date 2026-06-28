@@ -13,6 +13,14 @@
     playable?: boolean;
     damage?: number;
     testId?: string;
+    animationAnchor?: string;
+    animationAnchorKey?: string;
+    animationPlayerIndex?: number;
+    animationZone?: string;
+    animationSlot?: string;
+    animationSlotIndex?: number;
+    animationCardSerial?: number;
+    animationCardId?: number;
     onclick?: (event: MouseEvent) => void;
     ondragstart?: (event: DragEvent) => void;
     ondragend?: (event: DragEvent) => void;
@@ -29,6 +37,14 @@
     playable = false,
     damage = 0,
     testId = '',
+    animationAnchor,
+    animationAnchorKey,
+    animationPlayerIndex,
+    animationZone,
+    animationSlot,
+    animationSlotIndex,
+    animationCardSerial,
+    animationCardId,
     onclick,
     ondragstart,
     ondragend,
@@ -85,6 +101,14 @@
     data-card-id={card?.id ?? undefined}
     data-card-serial={card?.serial ?? undefined}
     data-card-player-index={card?.playerIndex ?? undefined}
+    data-animation-anchor={animationAnchor}
+    data-animation-anchor-key={animationAnchorKey}
+    data-animation-player={animationPlayerIndex ?? card?.playerIndex ?? undefined}
+    data-animation-zone={animationZone}
+    data-animation-slot={animationSlot}
+    data-animation-slot-index={animationSlotIndex}
+    data-animation-card-serial={animationCardSerial ?? card?.serial ?? undefined}
+    data-animation-card-id={animationCardId ?? card?.id ?? undefined}
     title={card?.fullName ?? label}
     {onclick}
     {ondragstart}
@@ -118,6 +142,14 @@
     data-card-id={card?.id ?? undefined}
     data-card-serial={card?.serial ?? undefined}
     data-card-player-index={card?.playerIndex ?? undefined}
+    data-animation-anchor={animationAnchor}
+    data-animation-anchor-key={animationAnchorKey}
+    data-animation-player={animationPlayerIndex ?? card?.playerIndex ?? undefined}
+    data-animation-zone={animationZone}
+    data-animation-slot={animationSlot}
+    data-animation-slot-index={animationSlotIndex}
+    data-animation-card-serial={animationCardSerial ?? card?.serial ?? undefined}
+    data-animation-card-id={animationCardId ?? card?.id ?? undefined}
     title={card?.fullName ?? label}
   >
     {#if showImage}

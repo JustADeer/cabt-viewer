@@ -21,6 +21,12 @@
   class:bottom-stadium-card={placement === 'bottom'}
   data-card-anchor={`player:${owner.index}:stadium`}
   data-card-serial={card.serial}
+  data-animation-anchor="stadium-card"
+  data-animation-anchor-key={`player:${owner.index}:stadium-card${card.serial !== undefined ? `:serial:${card.serial}` : ''}`}
+  data-animation-player={owner.index}
+  data-animation-zone="stadium"
+  data-animation-card-serial={card.serial ?? undefined}
+  data-animation-card-id={card.id ?? undefined}
   title={card.fullName}
   onclick={() => showZone(owner.index, 'stadium', `${owner.name} stadium`)}
 >
