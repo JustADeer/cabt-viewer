@@ -90,6 +90,9 @@ For handoffs, keep exactly one visible owner. Hide the destination while the
 sprite is moving, keep the sprite visible at the destination, then reveal the
 real destination and remove the sprite in the same handoff moment. Avoid fading
 the sprite out before the destination appears.
+When multiple sprites share a source or destination in the same phase, hidden
+DOM flags must be ref-counted so the first sprite to finish cannot reveal an
+element still owned by another sprite.
 
 Board-plane animations and viewport/hand animations are different coordinate
 spaces. A card that starts and ends on the tilted board should stay inside the

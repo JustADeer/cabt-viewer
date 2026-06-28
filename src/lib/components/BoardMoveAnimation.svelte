@@ -66,7 +66,7 @@
   let reduceMotion = $state(false);
   let sprites = $state<BoardMoveSprite[]>([]);
   let animationGeneration = 0;
-  const activeHiddenElements = new Set<HTMLElement>();
+  const hiddenElementCounts = new Map<HTMLElement, number>();
 
   onMount(() => {
     if (typeof window.matchMedia !== 'function') {
@@ -426,21 +426,26 @@
       clearTimeout(timer);
     }
     timers.length = 0;
-    for (const element of activeHiddenElements) {
+    for (const element of hiddenElementCounts.keys()) {
       delete element.dataset.boardMoveAnimationHidden;
     }
-    activeHiddenElements.clear();
+    hiddenElementCounts.clear();
     sprites = [];
   }
 
   function hideBoardMoveElement(element: HTMLElement) {
-    activeHiddenElements.add(element);
+    hiddenElementCounts.set(element, (hiddenElementCounts.get(element) ?? 0) + 1);
     element.dataset.boardMoveAnimationHidden = 'true';
   }
 
   function showBoardMoveElement(element: HTMLElement) {
+    const count = (hiddenElementCounts.get(element) ?? 1) - 1;
+    if (count > 0) {
+      hiddenElementCounts.set(element, count);
+      return;
+    }
+    hiddenElementCounts.delete(element);
     delete element.dataset.boardMoveAnimationHidden;
-    activeHiddenElements.delete(element);
   }
 
   function measureSpriteCorrection(sprite: BoardMoveSprite, target: HTMLElement) {
