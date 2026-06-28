@@ -12,6 +12,7 @@ import {
 describe('animation anchors', () => {
   const anchors: AnimationAnchorRef[] = [
     { kind: 'hand', playerIndex: 0 },
+    { kind: 'hand-slot', playerIndex: 0, handIndex: 3 },
     { kind: 'hand-card', playerIndex: 0, handIndex: 3, serial: 91 },
     { kind: 'deck-top', playerIndex: 1 },
     { kind: 'discard-pile', playerIndex: 1 },

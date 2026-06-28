@@ -156,10 +156,10 @@ function cardMoveMotion(id: string, startMs: number, durationMs: number): Animat
       kind: 'hand-card',
       playerIndex: 0,
       handIndex: 0,
-      cardSerial: 101,
+      serial: 101,
     },
     targetAnchor: {
-      kind: 'discard-pile-surface',
+      kind: 'discard-pile',
       playerIndex: 0,
     },
     coordinateSpace: 'cross-plane',
@@ -169,7 +169,7 @@ function cardMoveMotion(id: string, startMs: number, durationMs: number): Animat
         kind: 'hand-card',
         playerIndex: 0,
         handIndex: 0,
-        cardSerial: 101,
+        serial: 101,
       },
     },
     handoffPolicy: {

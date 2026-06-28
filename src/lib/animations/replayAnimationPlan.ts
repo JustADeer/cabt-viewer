@@ -1,77 +1,11 @@
 import type { ActionTimelineEvent, CardView, GameView } from '../game/types';
+import type { AnimationAnchorRef, AnimationIdentity } from './animationAnchors';
+import type { AnimationVisibilityClaim } from './animationVisibility';
+
+export type { AnimationAnchorRef, AnimationIdentity } from './animationAnchors';
+export type { AnimationVisibilityClaim } from './animationVisibility';
 
 export type AnimationCoordinateSpace = 'board' | 'viewport' | 'cross-plane';
-
-export type AnimationIdentity = {
-  kind: 'card' | 'pokemon' | 'energy' | 'tool' | 'stadium' | 'prize' | 'unknown';
-  playerIndex?: number;
-  cardId?: number;
-  serial?: number;
-  name?: string;
-};
-
-export type AnimationAnchorRef =
-  | {
-      kind: 'hand-card';
-      playerIndex: number;
-      handIndex?: number;
-      cardId?: number;
-      cardSerial?: number;
-    }
-  | {
-      kind: 'hand-slot';
-      playerIndex: number;
-      handIndex: number;
-    }
-  | {
-      kind: 'deck-top';
-      playerIndex: number;
-    }
-  | {
-      kind: 'discard-top-card' | 'discard-pile-surface' | 'play-zone-card' | 'stadium-card';
-      playerIndex: number;
-      cardId?: number;
-      cardSerial?: number;
-    }
-  | {
-      kind: 'active-pokemon-card';
-      playerIndex: number;
-      pokemonSerial?: number;
-    }
-  | {
-      kind: 'bench-pokemon-card' | 'bench-slot-surface';
-      playerIndex: number;
-      benchIndex: number;
-      pokemonSerial?: number;
-    }
-  | {
-      kind: 'attached-energy' | 'attached-tool';
-      playerIndex: number;
-      slot: 'active' | 'bench';
-      slotIndex: number;
-      cardSerial?: number;
-    }
-  | {
-      kind: 'prize-card';
-      playerIndex: number;
-      prizeIndex: number;
-    }
-  | {
-      kind: 'reveal-slot';
-      playerIndex: number;
-      revealIndex: number;
-      cardId?: number;
-      cardSerial?: number;
-    };
-
-export type AnimationVisibilityRole = 'source' | 'destination' | 'handoff';
-
-export type AnimationVisibilityClaim = {
-  scopeKey: string;
-  anchor: AnimationAnchorRef;
-  identity?: AnimationIdentity;
-  role: AnimationVisibilityRole;
-};
 
 export type AnimationSpriteVisual =
   | {

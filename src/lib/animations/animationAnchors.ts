@@ -2,6 +2,7 @@ export type AnimationBoardSlot = 'active' | 'bench';
 
 export type AnimationAnchorRef =
   | { kind: 'hand'; playerIndex: number }
+  | { kind: 'hand-slot'; playerIndex: number; handIndex: number }
   | { kind: 'hand-card'; playerIndex: number; handIndex?: number; serial?: number }
   | { kind: 'deck-top'; playerIndex: number }
   | { kind: 'discard-pile'; playerIndex: number }
@@ -15,7 +16,7 @@ export type AnimationAnchorRef =
   | { kind: 'prize-card'; playerIndex: number; prizeIndex: number }
   | { kind: 'reveal-card'; playerIndex: number; revealIndex: number; serial?: number };
 
-export type AnimationIdentityKind = 'card' | 'pokemon' | 'energy' | 'tool';
+export type AnimationIdentityKind = 'card' | 'pokemon' | 'energy' | 'tool' | 'stadium' | 'prize' | 'unknown';
 
 export type AnimationIdentity = {
   kind: AnimationIdentityKind;
@@ -33,6 +34,7 @@ export type AnimationAnchorAttributes = Record<string, string | number | undefin
 
 const anchorKinds = new Set<AnimationAnchorRef['kind']>([
   'hand',
+  'hand-slot',
   'hand-card',
   'deck-top',
   'discard-pile',
@@ -53,6 +55,8 @@ export function serializeAnimationAnchor(anchor: AnimationAnchorRef): string {
   switch (anchor.kind) {
     case 'hand':
       return `player:${anchor.playerIndex}:hand`;
+    case 'hand-slot':
+      return serializeParts('player', anchor.playerIndex, 'hand-slot', anchor.handIndex);
     case 'hand-card':
       return serializeParts('player', anchor.playerIndex, 'hand-card', taggedPart('index', anchor.handIndex), taggedPart('serial', anchor.serial));
     case 'deck-top':
@@ -97,6 +101,10 @@ export function parseAnimationAnchor(value: string): AnimationAnchorRef | null {
   switch (kind) {
     case 'hand':
       return parts.length === 3 ? { kind, playerIndex } : null;
+    case 'hand-slot': {
+      const handIndex = parseNumber(parts[3]);
+      return handIndex === null || parts.length !== 4 ? null : { kind, playerIndex, handIndex };
+    }
     case 'hand-card': {
       const tags = parseTags(parts, 3, ['index', 'serial']);
       if (!tags) {
@@ -175,7 +183,7 @@ export function parseAnimationIdentity(value: string): AnimationIdentity | null 
   }
   const parts = value.split(':');
   const kind = parts[0] as AnimationIdentityKind | undefined;
-  if (!kind || !['card', 'pokemon', 'energy', 'tool'].includes(kind)) {
+  if (!kind || !['card', 'pokemon', 'energy', 'tool', 'stadium', 'prize', 'unknown'].includes(kind)) {
     return null;
   }
   const tags = parseTags(parts, 1, ['serial', 'card', 'name']);
