@@ -1455,6 +1455,7 @@
           events={game.actionTimeline ?? []}
           stepEvents={animationStepEvents}
           scopeKey={animationScopeKey}
+          animationPlan={replayAnimationPlan}
           {replayMode}
         />
 

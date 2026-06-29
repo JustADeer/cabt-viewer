@@ -10,6 +10,7 @@
   import { cabtCardToView } from '../cabt/cardView';
   import { CabtAreaType } from '../cabt/types';
   import { replayAnimationPhaseGapMs } from '../game/replay';
+  import type { ReplayAnimationPhasePlan } from '../animations/replayAnimationPlan';
   import type { ActionTimelineEvent, CardView } from '../game/types';
 
   type Props = {
@@ -17,6 +18,7 @@
     stepEvents?: ActionTimelineEvent[];
     scopeKey?: string | number;
     replayMode?: boolean;
+    animationPlan?: ReplayAnimationPhasePlan;
   };
 
   type DamageSprite = {
@@ -47,6 +49,7 @@
     stepEvents = [],
     scopeKey = '',
     replayMode = false,
+    animationPlan,
   }: Props = $props();
 
   const timers: ReturnType<typeof setTimeout>[] = [];
@@ -108,8 +111,15 @@
 
     startAttackAnnouncements(animationEvents);
     startDamageAnimations(animationEvents);
-    startKnockOutAnimations(animationEvents);
+    if (!plannedKnockOutMotionActive(animationPlan)) {
+      startKnockOutAnimations(animationEvents);
+    }
   });
+
+  function plannedKnockOutMotionActive(plan: ReplayAnimationPhasePlan | undefined): boolean {
+    return !!plan?.key.startsWith('KnockOut:')
+      && plan.motions.some((motion) => motion.kind === 'card-move');
+  }
 
   function startAttackAnnouncements(animationEvents: ActionTimelineEvent[]) {
     for (const event of animationEvents.filter((candidate) => candidate.kind === 'Attack')) {

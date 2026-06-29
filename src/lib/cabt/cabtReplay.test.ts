@@ -3127,6 +3127,23 @@ describe('cabtReplayToSnapshot', () => {
     expect(step.animationPhases?.[3].view.players[1].active.damage).toBe(400);
     expect(step.animationPhases?.[3].view.players[1].bench[0].pokemon?.serial).toBe(99);
     expect(step.animationPhases?.[3].view.players[1].bench[0].damage).toBe(0);
+    expect(step.animationPhases?.[3].animationPlan?.motions).toMatchObject([
+      {
+        kind: 'card-move',
+        coordinateSpace: 'board',
+        sourceAnchor: { kind: 'board-slot', playerIndex: 1, slot: 'active', slotIndex: 0 },
+        targetAnchor: { kind: 'discard-pile', playerIndex: 1 },
+        identity: { kind: 'pokemon', serial: 64, cardId: 721 },
+        durationMs: 620,
+        handoffPolicy: {
+          hideSourceUntil: 'snapshot',
+          hideDestinationUntil: 'prepaint',
+          removeSprite: 'scope-exit',
+          prepaintFrames: 2,
+        },
+      },
+    ]);
+    expect(step.animationPhases?.[3].view.players[1].discard.map((card) => card.serial)).toEqual([]);
     expect(snapshot.views[step.stateIndex].players[1].active.empty).toBe(true);
     expect(snapshot.views[step.stateIndex].players[1].discard.map((card) => card.serial)).toEqual([64, 96]);
     expect(snapshot.views[step.stateIndex].players[1].discard.at(-1)?.serial).toBe(96);

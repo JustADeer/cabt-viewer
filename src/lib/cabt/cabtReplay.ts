@@ -1449,6 +1449,7 @@ function animationPhaseMotions(
     || phase.key.startsWith('DeckBoardPlace:')
     || phase.key.startsWith('StadiumMove:')
     || phase.key.startsWith('AttachedMove:')
+    || phase.key.startsWith('KnockOut:')
   ) {
     return boardCardMoveMotions(phase, view);
   }
@@ -1698,6 +1699,9 @@ function boardCardMoveMotionsForEvent(
   const toArea = Number(params?.toArea);
   const serial = finiteNumber(params?.serial);
   const cardId = finiteNumber(params?.cardId);
+  if (phase.key.startsWith('KnockOut:') && !isKnockOutMove(fromArea, toArea)) {
+    return [];
+  }
   if (playerIndex === undefined || cardId === undefined) {
     return null;
   }
@@ -1721,6 +1725,7 @@ function boardCardMoveMotionsForEvent(
       name: stringValue(params?.cardName),
     },
     removeSprite: (fromArea === CabtAreaType.ACTIVE || fromArea === CabtAreaType.BENCH) && (toArea === CabtAreaType.ACTIVE || toArea === CabtAreaType.BENCH)
+      || isKnockOutMove(fromArea, toArea)
       ? 'scope-exit'
       : 'prepaint',
     durationMs: cardMoveDurationMs(fromArea, toArea),
@@ -1813,6 +1818,9 @@ function cardMoveMotion(input: {
 function cardMoveDurationMs(fromArea: number, toArea: number): number {
   if (fromArea === CabtAreaType.ENERGY || fromArea === CabtAreaType.TOOL) {
     return actionAnimationTiming.handMoveMs;
+  }
+  if (isKnockOutMove(fromArea, toArea)) {
+    return actionAnimationTiming.knockOutMs;
   }
   if (fromArea === CabtAreaType.STADIUM && toArea === CabtAreaType.DISCARD) {
     return actionAnimationTiming.stadiumMoveMs;
