@@ -58,6 +58,7 @@
 
   type DestinationHideOptions = {
     skipCentralDestinationClaims?: boolean;
+    disableLocalDestinationClaims?: boolean;
   };
 
   type RevealCardAnchor = Extract<AnimationAnchorRef, { kind: 'reveal-card' }>;
@@ -111,16 +112,17 @@
         const attachEvents = planEvents.filter(isPlannedRevealAttachEvent);
         const takeEvents = planEvents.filter(isRevealTakeEvent);
         const returnEvents = planEvents.filter(isRevealReturnEvent);
+        const plannedHideOptions: DestinationHideOptions = { disableLocalDestinationClaims: true };
         if (revealEvents.length) {
-          startReveal(revealEvents, planEvents, { skipCentralDestinationClaims: true });
+          startReveal(revealEvents, planEvents, plannedHideOptions);
         } else {
           seedHeldRevealSprites(currentPlanMotions);
         }
         if (attachEvents.length) {
-          attachRevealedCards(attachEvents, planEvents, { skipCentralDestinationClaims: true });
+          attachRevealedCards(attachEvents, planEvents, plannedHideOptions);
         }
         if (takeEvents.length) {
-          takeRevealedCards(takeEvents, planEvents, { skipCentralDestinationClaims: true });
+          takeRevealedCards(takeEvents, planEvents, plannedHideOptions);
         }
         if (returnEvents.length) {
           returnRevealedCards(returnEvents, planEvents);
@@ -1008,7 +1010,8 @@
   }
 
   function shouldSkipLocalDestinationClaim(element: HTMLElement, options: DestinationHideOptions): boolean {
-    return !!options.skipCentralDestinationClaims && centralDestinationClaimOwns(element);
+    return !!options.disableLocalDestinationClaims
+      || (!!options.skipCentralDestinationClaims && centralDestinationClaimOwns(element));
   }
 
   function centralDestinationClaimOwns(element: HTMLElement): boolean {

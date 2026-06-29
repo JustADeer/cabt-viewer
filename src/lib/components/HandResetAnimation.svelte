@@ -202,12 +202,8 @@
       id: nextAnimationId++,
       sprites: plannedSprites,
     };
-    const animationSources = hideSources(plannedSprites.map((sprite) => sprite.sourceElement), { skipCentralSourceClaims: true });
     resets = [...resets, animation];
     const timer = setTimeout(() => {
-      if (!replayMode) {
-        showSources(animationSources);
-      }
       resets = resets.filter((item) => item.id !== animation.id);
     }, Math.max(...plannedSprites.map((sprite) => sprite.delayMs + sprite.durationMs)) + 120);
     timers.push(timer);

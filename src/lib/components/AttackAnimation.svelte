@@ -407,10 +407,8 @@
 </span>
 
 <style>
-  /* TODO: Move KO board-to-discard motion into the board/replay motion owner when
-     that orchestrator covers attack KOs. This component is mounted outside
-     .game-board-plane, so a true board-plane sprite would need cross-component
-     DOM ownership or a portal instead of a local coordinate change. */
+  /* KO card movement is owned by replay board-move plans when available.
+     The local fixed-layer KO sprite remains as the non-planned fallback. */
   .attack-animation-layer {
     position: fixed;
     inset: 0;

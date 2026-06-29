@@ -3,12 +3,6 @@
   import {
     resolveAnimationAnchorElements,
   } from '../animations/animationAnchors';
-  import {
-    centralVisibilityClaimOwnsElement,
-    hideElementForAnimation,
-    releaseElementVisibilityClaims,
-    type ElementVisibilityClaim,
-  } from '../animations/animationVisibilityClaims';
   import type { CardMoveAnimationMotion, ReplayAnimationPhasePlan } from '../animations/replayAnimationPlan';
   import { replayAnimationPhaseGapMs } from '../game/replay';
   import type { CardView } from '../game/types';
@@ -36,10 +30,6 @@
     opponentSide: boolean;
   };
 
-  type ActiveCrossPlaneSprite = CrossPlaneSprite & {
-    visibilityClaims: ElementVisibilityClaim[];
-  };
-
   let {
     animationPlan,
     scopeKey = '',
@@ -48,7 +38,7 @@
 
   const timers: ReturnType<typeof setTimeout>[] = [];
   const frameIds: number[] = [];
-  let activeSprites = $state<ActiveCrossPlaneSprite[]>([]);
+  let activeSprites = $state<CrossPlaneSprite[]>([]);
   let lastPlanKey = '';
   let lastScopeKey: string | number = '';
   let initialized = false;
@@ -104,48 +94,17 @@
       if (!sprite) {
         continue;
       }
-      const sourceElement = sourceElementForMotion(motion);
-      const targetElement = targetElementForMotion(motion);
-      if (targetElement && !centralVisibilityClaimOwnsElement({
-        element: targetElement,
-        role: 'destination',
-        claims: animationPlan?.visibilityClaims,
-      })) {
-        sprite.visibilityClaims.push(hideElementForAnimation({
-          element: targetElement,
-          scopeKey,
-          role: 'destination',
-        }));
-      }
-      const startTimer = setTimeout(() => {
-        if (nextGeneration !== generation) {
-          return;
-        }
-        if (sourceElement && !centralVisibilityClaimOwnsElement({
-          element: sourceElement,
-          role: 'source',
-          claims: animationPlan?.visibilityClaims,
-        })) {
-          sprite.visibilityClaims.push(hideElementForAnimation({
-            element: sourceElement,
-            scopeKey,
-            role: 'source',
-          }));
-        }
-      }, motion.startMs);
       const finishTimer = setTimeout(() => {
         if (nextGeneration !== generation) {
           return;
         }
-        releaseElementVisibilityClaims(sprite.visibilityClaims);
-        sprite.visibilityClaims = [];
         removeSpriteAfterPrepaint(sprite.id, nextGeneration);
       }, motion.startMs + motion.durationMs + handoffSettleMs(motion));
-      timers.push(startTimer, finishTimer);
+      timers.push(finishTimer);
     }
   }
 
-  function spriteForMotion(motion: CardMoveAnimationMotion, currentGeneration: number): ActiveCrossPlaneSprite[] {
+  function spriteForMotion(motion: CardMoveAnimationMotion, currentGeneration: number): CrossPlaneSprite[] {
     if (motion.spriteVisual.kind !== 'card' || !motion.spriteVisual.card) {
       return [];
     }
@@ -172,7 +131,6 @@
       durationMs: motion.durationMs,
       faceDown: isConcealedHandTarget(targetElement),
       opponentSide: isOpponentSide(sourceElement) || isOpponentSide(targetElement),
-      visibilityClaims: [],
     }];
   }
 
@@ -248,10 +206,6 @@
       cancelAnimationFrame(frameId);
     }
     frameIds.length = 0;
-    for (const sprite of activeSprites) {
-      releaseElementVisibilityClaims(sprite.visibilityClaims);
-      sprite.visibilityClaims = [];
-    }
     activeSprites = [];
   }
 

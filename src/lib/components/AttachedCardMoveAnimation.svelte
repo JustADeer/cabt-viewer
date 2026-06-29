@@ -6,7 +6,6 @@
     type AnimationIdentity,
   } from '../animations/animationAnchors';
   import {
-    centralVisibilityClaimOwnsElement,
     hideElementForAnimation,
     releaseElementVisibilityClaim,
     type ElementVisibilityClaim,
@@ -47,8 +46,7 @@
     durationMs: number;
     hiddenElement?: HTMLElement;
     destinationCardElement?: HTMLElement;
-    sourceClaimAnchor?: AnimationAnchorRef;
-    destinationClaimAnchor?: AnimationAnchorRef;
+    planned: boolean;
   };
 
   type ActiveAttachedMoveSprite = AttachedMoveSprite & {
@@ -204,22 +202,20 @@
       };
       activeSprites = [...activeSprites, activeSprite];
       const startTimer = setTimeout(() => {
-        if (activeSprite.hiddenElement) {
+        if (!activeSprite.planned && activeSprite.hiddenElement) {
           hideActiveElement(
             activeSprite,
             activeSprite.hiddenElement,
             'source',
             'data-attached-move-animation-hidden',
-            activeSprite.sourceClaimAnchor,
           );
         }
-        if (activeSprite.destinationCardElement) {
+        if (!activeSprite.planned && activeSprite.destinationCardElement) {
           hideActiveElement(
             activeSprite,
             activeSprite.destinationCardElement,
             'destination',
             'data-attached-move-destination-card-hidden',
-            activeSprite.destinationClaimAnchor,
           );
         }
       }, sprite.delayMs);
@@ -259,8 +255,7 @@
       identity: motion.identity,
       delayMs: motion.startMs,
       durationMs: motion.durationMs,
-      sourceClaimAnchor: motion.sourceAnchor,
-      destinationClaimAnchor: motion.targetAnchor,
+      planned: true,
     });
   }
 
@@ -281,6 +276,7 @@
       },
       delayMs: actionAnimationStartMs(animationEvents, event),
       durationMs: actionAnimationTiming.handMoveMs,
+      planned: false,
     });
   }
 
@@ -291,8 +287,7 @@
     identity?: AnimationIdentity;
     delayMs: number;
     durationMs: number;
-    sourceClaimAnchor?: AnimationAnchorRef;
-    destinationClaimAnchor?: AnimationAnchorRef;
+    planned: boolean;
   }): AttachedMoveSprite[] {
     const source = input.source;
     const target = input.target;
@@ -343,8 +338,7 @@
       durationMs: input.durationMs,
       hiddenElement: source.hiddenElement,
       destinationCardElement: destinationCardElementFor(target, serial, cardId),
-      sourceClaimAnchor: input.sourceClaimAnchor,
-      destinationClaimAnchor: input.destinationClaimAnchor,
+      planned: input.planned,
     }];
   }
 
@@ -513,16 +507,7 @@
     element: HTMLElement,
     role: AnimationVisibilityRole,
     fallbackAttribute: string,
-    plannedAnchor?: AnimationAnchorRef,
   ) {
-    if (centralVisibilityClaimOwnsElement({
-      element,
-      role,
-      claims: animationPlan?.visibilityClaims,
-      plannedAnchor,
-    })) {
-      return;
-    }
     sprite.visibilityClaims.push(hideElementForAnimation({
       element,
       scopeKey,
