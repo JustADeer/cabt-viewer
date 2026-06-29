@@ -180,7 +180,7 @@ export function centralVisibilityClaimOwnsElement(input: {
 }): boolean {
   const anchoredElement = animationAnchorForElement(input.element);
   const anchorKeys = new Set<string>();
-  if (input.plannedAnchor) {
+  if (input.plannedAnchor && !anchoredElement) {
     anchorKeys.add(serializeAnimationAnchor(input.plannedAnchor));
   }
   if (anchoredElement) {

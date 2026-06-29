@@ -24,7 +24,6 @@
   const planTokenStartTimers: ReturnType<typeof setTimeout>[] = [];
   const planTokenReleaseTimers: ReturnType<typeof setTimeout>[] = [];
   const staleScopeReleaseTimers: ReturnType<typeof setTimeout>[] = [];
-  const sourceClaimLeadMs = 20;
   let refreshGeneration = 0;
   let reduceMotion = $state(false);
 
@@ -89,10 +88,8 @@
     lastPlan = currentPlan;
 
     if (currentPlan?.visibilityClaims.length) {
-      // Reduced motion renders no replacement sprite, so source cards must stay visible.
-      const claims = reduceMotion
-        ? currentPlan.visibilityClaims.filter((claim) => claim.role !== 'source')
-        : currentPlan.visibilityClaims;
+      // Reduced motion renders no replacement sprite, so the final DOM stays visible.
+      const claims = reduceMotion ? [] : currentPlan.visibilityClaims;
       for (const claim of claims) {
         const startMs = visibilityClaimStartMs(currentPlan, claim);
         const startClaim = () => {
@@ -157,7 +154,7 @@
     if (!motion) {
       return 0;
     }
-    return Math.max(0, motion.startMs - sourceClaimLeadMs);
+    return motion.startMs;
   }
 
   function visibilityClaimReleaseMs(plan: ReplayAnimationPhasePlan, claim: AnimationVisibilityClaim): number | undefined {

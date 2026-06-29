@@ -326,6 +326,7 @@
   @media (prefers-reduced-motion: reduce) {
     .cross-plane-card-move-sprite {
       animation: none;
+      display: none;
     }
   }
 </style>

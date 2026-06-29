@@ -7,6 +7,7 @@ import {
 import { replayAnimationVisibility } from './animationVisibility';
 import {
   claimAnimationAnchorVisibility,
+  centralVisibilityClaimOwnsElement,
   hideElementForAnimation,
   refreshAnimationVisibilityClaims,
   releaseAnimationVisibilityClaim,
@@ -28,6 +29,10 @@ class FakeHTMLElement {
 
   getAttribute(name: string): string | undefined {
     return this.attributes.get(name);
+  }
+
+  closest(selector: string): FakeHTMLElement | null {
+    return selector === '[data-animation-anchor-key]' && this.dataset.animationAnchorKey ? this : null;
   }
 }
 
@@ -216,6 +221,26 @@ describe('semantic animation visibility claims', () => {
 
     releaseAnimationVisibilityClaim(activeClaim);
     expect(element.getAttribute(replayAnimationVisibility.hiddenAttribute)).toBeUndefined();
+  });
+
+  it('does not treat a planned anchor as ownership for a different resolved fallback anchor', () => {
+    vi.stubGlobal('HTMLElement', FakeHTMLElement);
+    const element = new FakeHTMLElement();
+    const fallbackAnchor: AnimationAnchorRef = { ...anchor, serial: undefined };
+    element.dataset.animationAnchorKey = serializeAnimationAnchor(fallbackAnchor);
+    element.dataset.animationAnchor = fallbackAnchor.kind;
+
+    expect(centralVisibilityClaimOwnsElement({
+      element: element as unknown as HTMLElement,
+      role: 'source',
+      plannedAnchor: anchor,
+      claims: [{
+        scopeKey: 'scope-a',
+        anchor,
+        identity,
+        role: 'source',
+      }],
+    })).toBe(false);
   });
 });
 
