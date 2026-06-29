@@ -86,12 +86,11 @@ export function classifyAnimationCoverage(
     }
 
     if (isAttachedCardArea(fromArea) && toArea === CabtAreaType.HAND) {
-      return {
-        key,
-        level: 'static',
-        label: 'Attached card to hand needs a cross-plane animation',
-        notes: ['The current attached-card mover runs inside the tilted board plane; hand destinations need an explicit viewport/hand transition before this can count as polished.'],
-      };
+      if (!hasFiniteNumber(params?.serial)) {
+        notes.push('Attached-card returns to hand need serials to find the visible source badge or tool preview.');
+        return { key, level: 'conditional', label: 'Attached card return to hand', notes };
+      }
+      return { key, level: 'polished', label: 'Attached card return to hand', notes };
     }
 
     if (!polishedMoveAreas.has(shape)) {

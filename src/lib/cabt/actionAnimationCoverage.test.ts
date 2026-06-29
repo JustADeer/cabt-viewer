@@ -133,7 +133,7 @@ describe('classifyAnimationCoverage', () => {
     expect(coverage.label).toBe('Evolution stack move is projected but not animated');
   });
 
-  it('does not claim attached-card moves to hand are polished without a cross-plane animation', () => {
+  it('counts attached-card moves to hand as polished when serials are available', () => {
     const coverage = classifyAnimationCoverage(event('MoveCard', {
       fromArea: CabtAreaType.ENERGY,
       toArea: CabtAreaType.HAND,
@@ -141,8 +141,19 @@ describe('classifyAnimationCoverage', () => {
       serial: 12,
     }));
 
-    expect(coverage.level).toBe('static');
-    expect(coverage.label).toBe('Attached card to hand needs a cross-plane animation');
+    expect(coverage.level).toBe('polished');
+    expect(coverage.label).toBe('Attached card return to hand');
+  });
+
+  it('marks attached-card moves to hand conditional without serials', () => {
+    const coverage = classifyAnimationCoverage(event('MoveCard', {
+      fromArea: CabtAreaType.TOOL,
+      toArea: CabtAreaType.HAND,
+      cardId: 99,
+    }));
+
+    expect(coverage.level).toBe('conditional');
+    expect(coverage.label).toBe('Attached card return to hand');
   });
 
   it('flags uncommon zone movements as static state changes', () => {

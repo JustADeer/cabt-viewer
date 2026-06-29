@@ -3089,6 +3089,177 @@ describe('cabtReplayToSnapshot', () => {
     expect(snapshot.views[step.stateIndex].players[0].discard.map((card) => card.serial)).toEqual([91]);
   });
 
+  it('plans attached energy returning to hand as a cross-plane motion', () => {
+    const snapshot = cabtReplayToSnapshot({
+      visualize: [{
+        current: {
+          turn: 4,
+          yourIndex: 0,
+          result: -1,
+          players: [{
+            active: [{
+              id: 721,
+              serial: 64,
+              hp: 150,
+              maxHp: 150,
+              energyCards: [{ id: 3, serial: 91 }],
+            }],
+            bench: [],
+            benchMax: 5,
+            hand: [],
+            deckCount: 45,
+            discard: [],
+            prize: [],
+          }, {
+            active: [],
+            bench: [],
+            benchMax: 5,
+            handCount: 0,
+            deckCount: 46,
+            prize: [],
+          }],
+        },
+      }, {
+        logs: [
+          { type: 'MoveCard', playerIndex: 0, cardId: 3, serial: 91, fromArea: CabtAreaType.ENERGY, toArea: CabtAreaType.HAND },
+        ],
+        current: {
+          turn: 4,
+          yourIndex: 0,
+          result: -1,
+          players: [{
+            active: [{
+              id: 721,
+              serial: 64,
+              hp: 150,
+              maxHp: 150,
+              energyCards: [],
+            }],
+            bench: [],
+            benchMax: 5,
+            hand: [{ id: 3, serial: 91 }],
+            deckCount: 45,
+            discard: [],
+            prize: [],
+          }, {
+            active: [],
+            bench: [],
+            benchMax: 5,
+            handCount: 0,
+            deckCount: 46,
+            prize: [],
+          }],
+        },
+      }],
+    });
+
+    const step = snapshot.steps[1];
+    expect(step.animationPhases?.map((phase) => phase.key.replace(/:\d+:.+$/, ''))).toEqual(['AttachedMove']);
+    expect(step.animationPhases?.[0].view.players[0].active.energy.map((card) => card.serial)).toEqual([91]);
+    expect(step.animationPhases?.[0].view.players[0].hand.map((card) => card.serial)).toEqual([91]);
+    expect(step.animationPhases?.[0].animationPlan?.motions).toMatchObject([
+      {
+        kind: 'card-move',
+        coordinateSpace: 'cross-plane',
+        sourceAnchor: { kind: 'attached-energy', playerIndex: 0, slot: 'active', slotIndex: 0, serial: 91 },
+        targetAnchor: { kind: 'hand-card', playerIndex: 0, handIndex: 0, serial: 91 },
+        identity: { kind: 'energy', serial: 91, cardId: 3 },
+        durationMs: 360,
+      },
+    ]);
+    expect(step.animationPhases?.[0].animationPlan?.visibilityClaims).toMatchObject([
+      {
+        anchor: { kind: 'hand-card', playerIndex: 0, handIndex: 0, serial: 91 },
+        role: 'destination',
+      },
+    ]);
+    expect(snapshot.views[step.stateIndex].players[0].active.energy).toHaveLength(0);
+    expect(snapshot.views[step.stateIndex].players[0].hand.map((card) => card.serial)).toEqual([91]);
+  });
+
+  it('plans opponent attached tool returning to hand as a cross-plane motion', () => {
+    const snapshot = cabtReplayToSnapshot({
+      visualize: [{
+        current: {
+          turn: 4,
+          yourIndex: 0,
+          result: -1,
+          players: [{
+            active: [],
+            bench: [],
+            benchMax: 5,
+            hand: [],
+            deckCount: 45,
+            prize: [],
+          }, {
+            active: [{
+              id: 722,
+              serial: 67,
+              hp: 90,
+              maxHp: 90,
+              tools: [{ id: 99, serial: 92 }],
+            }],
+            bench: [],
+            benchMax: 5,
+            hand: [],
+            deckCount: 46,
+            prize: [],
+          }],
+        },
+      }, {
+        logs: [
+          { type: 'MoveCard', playerIndex: 1, cardId: 99, serial: 92, fromArea: CabtAreaType.TOOL, toArea: CabtAreaType.HAND },
+        ],
+        current: {
+          turn: 4,
+          yourIndex: 0,
+          result: -1,
+          players: [{
+            active: [],
+            bench: [],
+            benchMax: 5,
+            hand: [],
+            deckCount: 45,
+            prize: [],
+          }, {
+            active: [{
+              id: 722,
+              serial: 67,
+              hp: 90,
+              maxHp: 90,
+              tools: [],
+            }],
+            bench: [],
+            benchMax: 5,
+            hand: [{ id: 99, serial: 92 }],
+            deckCount: 46,
+            prize: [],
+          }],
+        },
+      }],
+    });
+
+    const step = snapshot.steps[1];
+    expect(step.animationPhases?.map((phase) => phase.key.replace(/:\d+:.+$/, ''))).toEqual(['AttachedMove']);
+    expect(step.animationPhases?.[0].view.players[1].active.tools.map((card) => card.serial)).toEqual([92]);
+    expect(step.animationPhases?.[0].view.players[1].hand.map((card) => card.serial)).toEqual([92]);
+    expect(step.animationPhases?.[0].animationPlan?.motions).toMatchObject([
+      {
+        kind: 'card-move',
+        coordinateSpace: 'cross-plane',
+        sourceAnchor: { kind: 'attached-tool', playerIndex: 1, slot: 'active', slotIndex: 0, serial: 92 },
+        targetAnchor: { kind: 'hand-card', playerIndex: 1, handIndex: 0, serial: 92 },
+        identity: { kind: 'tool', serial: 92, cardId: 99 },
+      },
+    ]);
+    expect(step.animationPhases?.[0].animationPlan?.visibilityClaims).toMatchObject([
+      {
+        anchor: { kind: 'hand-card', playerIndex: 1, handIndex: 0, serial: 92 },
+        role: 'destination',
+      },
+    ]);
+  });
+
   it('holds the source board while a benched Pokemon is promoted active', () => {
     const snapshot = cabtReplayToSnapshot({
       visualize: [{

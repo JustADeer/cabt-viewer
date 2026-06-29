@@ -7,6 +7,7 @@
   import AttackAnimation from './lib/components/AttackAnimation.svelte';
   import BoardLayer from './lib/components/BoardLayer.svelte';
   import BoardPromptStrip from './lib/components/prompts/BoardPromptStrip.svelte';
+  import CrossPlaneCardMoveAnimation from './lib/components/CrossPlaneCardMoveAnimation.svelte';
   import EndGamePrompt from './lib/components/EndGamePrompt.svelte';
   import DeckDrawAnimation from './lib/components/DeckDrawAnimation.svelte';
   import DeckPrizeAnimation from './lib/components/DeckPrizeAnimation.svelte';
@@ -1432,6 +1433,12 @@
 
         <AttachedCardMoveAnimation
           events={game.actionTimeline ?? []}
+          scopeKey={animationScopeKey}
+          animationPlan={replayAnimationPlan}
+          {replayMode}
+        />
+
+        <CrossPlaneCardMoveAnimation
           scopeKey={animationScopeKey}
           animationPlan={replayAnimationPlan}
           {replayMode}

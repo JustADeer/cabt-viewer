@@ -8,6 +8,7 @@ import {
   type AnimationAnchorRef,
   type AnimationIdentity,
   type AnimationMotion,
+  type AnimationSpriteVisual,
   type AnimationVisibilityClaim,
 } from '../animations/replayAnimationPlan';
 import { resolveCardImageUrl } from '../game/cardImages';
@@ -1500,6 +1501,10 @@ function boardCardMoveMotionsForEvent(
       ? 'scope-exit'
       : 'prepaint',
     durationMs: cardMoveDurationMs(fromArea, toArea),
+    coordinateSpace: isAttachedCardArea(fromArea) && toArea === CabtAreaType.HAND ? 'cross-plane' : 'board',
+    spriteVisual: isAttachedCardArea(fromArea) && toArea === CabtAreaType.HAND
+      ? { kind: 'card', card: cardViewFromEvent(event) }
+      : undefined,
   })];
 }
 
@@ -1557,6 +1562,8 @@ function cardMoveMotion(input: {
   identity: AnimationIdentity;
   removeSprite: 'prepaint' | 'scope-exit';
   durationMs?: number;
+  coordinateSpace?: AnimationMotion['coordinateSpace'];
+  spriteVisual?: AnimationSpriteVisual;
 }): AnimationMotion {
   return {
     id: input.id,
@@ -1564,10 +1571,10 @@ function cardMoveMotion(input: {
     identity: input.identity,
     sourceAnchor: input.sourceAnchor,
     targetAnchor: input.targetAnchor,
-    coordinateSpace: 'board',
+    coordinateSpace: input.coordinateSpace ?? 'board',
     startMs: actionAnimationStartMs(input.phase.events, input.event),
     durationMs: input.durationMs ?? actionAnimationTiming.boardMoveMs,
-    spriteVisual: {
+    spriteVisual: input.spriteVisual ?? {
       kind: 'anchor-snapshot',
       anchor: input.sourceAnchor,
     },
@@ -1671,6 +1678,17 @@ function boardMoveTargetAnchor(
   if (toArea === CabtAreaType.DISCARD) {
     return { kind: 'discard-pile', playerIndex };
   }
+  if (toArea === CabtAreaType.HAND) {
+    const hand = view.players[playerIndex]?.hand ?? [];
+    const handIndex = hand.findIndex((card) => eventCardMatches(card, event));
+    const card = hand[handIndex];
+    return handIndex < 0 || !card ? undefined : {
+      kind: 'hand-card',
+      playerIndex,
+      handIndex,
+      serial: card.serial,
+    };
+  }
   if (toArea === CabtAreaType.ACTIVE) {
     const reciprocal = reciprocalBoardPositionEvent(phase, event);
     if (reciprocal) {
@@ -1750,7 +1768,44 @@ function animationPhaseVisibilityClaims(phase: AnimationEventPhase, view: GameVi
   if (phase.key.startsWith('DeckRevealTake:')) {
     return handTakeDestinationVisibilityClaims(phase, view);
   }
+  if (phase.key.startsWith('AttachedMove:')) {
+    return attachedHandDestinationVisibilityClaims(phase, view);
+  }
   return [];
+}
+
+function attachedHandDestinationVisibilityClaims(phase: AnimationEventPhase, view: GameView): AnimationVisibilityClaim[] {
+  const claims: AnimationVisibilityClaim[] = [];
+  for (const event of phase.events) {
+    if (!isAttachedToHandMoveEvent(event) || event.playerIndex === undefined) {
+      continue;
+    }
+    const params = event.params as Record<string, unknown> | undefined;
+    const playerIndex = event.playerIndex;
+    const hand = view.players[playerIndex]?.hand ?? [];
+    const handIndex = hand.findIndex((card) => eventCardMatches(card, event));
+    const card = hand[handIndex];
+    if (handIndex < 0 || !card) {
+      continue;
+    }
+    claims.push({
+      scopeKey: phase.key,
+      anchor: {
+        kind: 'hand-card',
+        playerIndex,
+        handIndex,
+        serial: card.serial,
+      },
+      identity: {
+        kind: Number(params?.fromArea) === CabtAreaType.TOOL ? 'tool' : 'energy',
+        serial: card.serial,
+        cardId: card.id,
+        name: card.name,
+      },
+      role: 'destination',
+    });
+  }
+  return claims;
 }
 
 function boardPlaceDestinationVisibilityClaims(phase: AnimationEventPhase, view: GameView): AnimationVisibilityClaim[] {
@@ -2075,6 +2130,9 @@ function animationSourceViewForPhase(
     );
   }
   if (phase.key.startsWith('AttachedMove:')) {
+    if (phase.events.some(isAttachedToHandMoveEvent)) {
+      return attachedToHandSourceView(phaseStartView, currentView, phase);
+    }
     return projectedViewForEvents(phaseStartView, currentView, phase.events, { deferMoveCardEvents: true });
   }
   if (phase.key.startsWith('StadiumMove:')) {
@@ -2096,6 +2154,27 @@ function boardMoveSourceView(sourceView: GameView, phaseStartView: GameView, cur
         ...player,
         discard: mergedKnownCards(phaseStartPlayer.discard, currentPlayer.discard),
         playZone: mergedKnownCards(phaseStartPlayer.playZone, currentPlayer.playZone),
+      };
+    }),
+  };
+}
+
+function attachedToHandSourceView(
+  phaseStartView: GameView,
+  currentView: GameView,
+  phase: AnimationEventPhase,
+): GameView {
+  const sourceView = projectedViewForEvents(phaseStartView, currentView, phase.events, { deferMoveCardEvents: true });
+  return {
+    ...sourceView,
+    players: sourceView.players.map((player, playerIndex) => {
+      const currentPlayer = currentView.players[playerIndex];
+      if (!currentPlayer || !phase.events.some((event) => event.playerIndex === playerIndex && isAttachedToHandMoveEvent(event))) {
+        return player;
+      }
+      return {
+        ...player,
+        hand: currentPlayer.hand,
       };
     }),
   };
@@ -2588,7 +2667,15 @@ function isAttachedCardArea(area: number): boolean {
 
 function isAttachedCardMoveDestination(area: number): boolean {
   return area === CabtAreaType.DISCARD
-    || area === CabtAreaType.DECK;
+    || area === CabtAreaType.DECK
+    || area === CabtAreaType.HAND;
+}
+
+function isAttachedToHandMoveEvent(event: ActionTimelineEvent): boolean {
+  const params = event.params as Record<string, unknown> | undefined;
+  return isMoveCardKind(event.kind)
+    && isAttachedCardArea(Number(params?.fromArea))
+    && Number(params?.toArea) === CabtAreaType.HAND;
 }
 
 function isKnockOutEvent(event: ActionTimelineEvent): boolean {
