@@ -11,6 +11,7 @@
   import type { CardMoveAnimationMotion, ReplayAnimationPhasePlan } from '../animations/replayAnimationPlan';
   import { cabtCardToView } from '../cabt/cardView';
   import { CabtAreaType } from '../cabt/types';
+  import { elementRectInPlane } from '../dom/planeGeometry';
   import { cardBackCssVar } from '../game/cardAssets';
   import { replayAnimationPhaseGapMs } from '../game/replay';
   import type { ActionTimelineEvent, CardView } from '../game/types';
@@ -128,8 +129,9 @@
     lastPlanKey = planKey;
 
     if (plannedMotions.length) {
+      const shouldStartPlan = !initialized || planChanged || scopeChanged;
       initialized = true;
-      if (!reduceMotion) {
+      if (!reduceMotion && shouldStartPlan) {
         startPlannedBoardMoves(plannedMotions);
       }
       markEventsSeen(currentEvents);
@@ -147,7 +149,7 @@
       return;
     }
 
-    const animationEvents = actionAnimationBatchEvents(currentEvents, seenEventIds, replayMode, scopeChanged);
+    const animationEvents = actionAnimationBatchEvents(currentEvents, seenEventIds);
     markEventsSeen(currentEvents);
     if (!animationEvents.length || reduceMotion) {
       return;
@@ -232,8 +234,8 @@
     for (const instruction of moveEvents.flatMap((event) => moveInstructionsForEvent(event, moveEvents))) {
       const sourceElement = instruction.source;
       const targetElement = instruction.target;
-      const sourceRect = localElementRect(sourceElement, boardPlane);
-      const targetRect = localElementRect(targetElement, boardPlane);
+      const sourceRect = elementRectInPlane(sourceElement, boardPlane);
+      const targetRect = elementRectInPlane(targetElement, boardPlane);
       if (!sourceRect || !targetRect || sourceRect.width <= 0 || targetRect.width <= 0) {
         continue;
       }
@@ -283,8 +285,8 @@
     if (!boardPlane) {
       return;
     }
-    const sourceRect = localElementRect(instruction.source, boardPlane);
-    const targetRect = localElementRect(instruction.target, boardPlane);
+    const sourceRect = elementRectInPlane(instruction.source, boardPlane);
+    const targetRect = elementRectInPlane(instruction.target, boardPlane);
     if (!sourceRect || !targetRect || sourceRect.width <= 0 || targetRect.width <= 0) {
       return;
     }
@@ -632,34 +634,6 @@
 
   function isOpponentSide(slotElement: HTMLElement): boolean {
     return !!slotElement.closest('.top-active-slot, .bench-row.opponent, .top-stadium-card');
-  }
-
-  function localElementRect(element: HTMLElement, root: HTMLElement) {
-    let left = 0;
-    let top = 0;
-    let current: HTMLElement | null = element;
-    while (current && current !== root) {
-      left += current.offsetLeft;
-      top += current.offsetTop;
-      current = current.offsetParent instanceof HTMLElement ? current.offsetParent : null;
-    }
-    if (current !== root) {
-      return null;
-    }
-    const style = getComputedStyle(element);
-    const width = parsedPixelValue(style.width) ?? element.offsetWidth;
-    const height = parsedPixelValue(style.height) ?? element.offsetHeight;
-    return {
-      left,
-      top,
-      width,
-      height,
-    };
-  }
-
-  function parsedPixelValue(value: string) {
-    const parsed = Number.parseFloat(value);
-    return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
   }
 
   function clearBoardMoves({ settleHandoff = false }: { settleHandoff?: boolean } = {}) {

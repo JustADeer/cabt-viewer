@@ -147,15 +147,11 @@
       return;
     }
 
-    const animationEvents = actionAnimationBatchEvents(currentEvents, seenEventIds, replayMode, scopeChanged);
-    const revealEvents = animationEvents.filter((event) => isDeckRevealEvent(event) && shouldAnimateEvent(event, scopeChanged));
-    const attachEvents = animationEvents.filter((event) => isRevealAttachEvent(event) && shouldAnimateEvent(event, scopeChanged));
-    const takeEvents = animationEvents.filter((event) => isRevealTakeEvent(event) && shouldAnimateEvent(event, scopeChanged));
-    const returnEvents = animationEvents.filter((event) => isRevealReturnEvent(event) && shouldAnimateEvent(event, scopeChanged));
-
-    if (replayMode && scopeChanged && !revealEvents.length && !attachEvents.length && !takeEvents.length && !returnEvents.length) {
-      clearReveals();
-    }
+    const animationEvents = actionAnimationBatchEvents(currentEvents, seenEventIds);
+    const revealEvents = animationEvents.filter((event) => isDeckRevealEvent(event) && shouldAnimateEvent(event));
+    const attachEvents = animationEvents.filter((event) => isRevealAttachEvent(event) && shouldAnimateEvent(event));
+    const takeEvents = animationEvents.filter((event) => isRevealTakeEvent(event) && shouldAnimateEvent(event));
+    const returnEvents = animationEvents.filter((event) => isRevealReturnEvent(event) && shouldAnimateEvent(event));
 
     for (const event of currentEvents) {
       seenEventIds.add(event.id);
@@ -373,8 +369,8 @@
     };
   }
 
-  function shouldAnimateEvent(event: ActionTimelineEvent, scopeChanged: boolean): boolean {
-    return (replayMode && scopeChanged) || !seenEventIds.has(event.id);
+  function shouldAnimateEvent(event: ActionTimelineEvent): boolean {
+    return !seenEventIds.has(event.id);
   }
 
   function isDeckRevealEvent(event: ActionTimelineEvent): boolean {

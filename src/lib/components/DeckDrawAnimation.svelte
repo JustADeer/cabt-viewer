@@ -130,12 +130,12 @@
       return;
     }
 
-    const animationEvents = actionAnimationBatchEvents(currentEvents, seenEventIds, replayMode, scopeChanged);
+    const animationEvents = actionAnimationBatchEvents(currentEvents, seenEventIds);
     const drawEvents = animationEvents.filter((event) => {
       if (!isDrawEvent(event)) {
         return false;
       }
-      if ((!replayMode || !scopeChanged) && seenEventIds.has(event.id)) {
+      if (seenEventIds.has(event.id)) {
         return false;
       }
       return true;

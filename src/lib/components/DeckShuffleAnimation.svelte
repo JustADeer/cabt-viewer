@@ -101,7 +101,7 @@
       return;
     }
 
-    const animationEvents = actionAnimationBatchEvents(currentEvents, seenEventIds, false, scopeChanged);
+    const animationEvents = actionAnimationBatchEvents(currentEvents, seenEventIds);
     const shuffleEvents = animationEvents.filter((event) => {
       if (event.kind !== 'Shuffle' || event.playerIndex !== playerIndex) {
         return false;

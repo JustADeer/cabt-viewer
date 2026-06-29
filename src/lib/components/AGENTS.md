@@ -7,6 +7,7 @@
 
 ## Replay Animation Invariants
 
+- Fully migrate replay animations to phase plans. Once a replay animation is plan-owned, remove the old replay event branch instead of keeping a parallel fallback; live/non-replay event animation can remain as a separate path when the interactive viewer still needs it.
 - Replay animations must be replayable. If a user scrubs away from a step and returns, the same phase should animate again. Use per-scope de-duping only to suppress duplicate work during the current render/phase, and clear it when the replay scope changes.
 - Prefer phase-scoped action timelines for phase-owned animations. A replay step can contain several logical phases, and using the whole step timeline from a component that should animate one phase can cause skipped source states or duplicate animation.
 - Guard replay phase timers against stale callbacks. A timer created for one step/phase must not advance a later step after the user scrubs.
@@ -17,6 +18,7 @@
 ## Board-Origin Cards
 
 - Cards that start on the board and end on the board should stay in the board plane for the whole animation. Avoid viewport/fixed layers unless the animation explicitly transitions between UI coordinate systems.
+- Resolve board-plane source and target rectangles through the shared DOM geometry helpers. Do not add component-local offset-parent or viewport fallbacks that can silently pull a card out of the tilted board frame.
 - Cards that end on the board should also finish in the board plane. Deck-to-bench and deck-to-active effects, such as Buddy-Buddy Poffin, should use board-local motion layers rather than fixed reveal overlays; otherwise the card appears to leave the tilted table and snap back into perspective at handoff.
 - If an attached card is represented as a small badge or crop on the board, do not animate a full card from the badge rectangle. Use the owning Pokemon card footprint when the intended effect is a full card sliding out from under that Pokemon.
 - Preserve visual stacking intent: source Pokemon should be able to occlude a card that slides out from underneath it, but destination piles should not occlude cards that are landing on top of them.

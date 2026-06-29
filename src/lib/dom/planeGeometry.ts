@@ -3,6 +3,13 @@ export type Point = {
   y: number;
 };
 
+export type PlaneRect = {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+};
+
 export type PlaneMapper = {
   pointFromViewport: (point: Point) => Point;
 };
@@ -43,6 +50,14 @@ export function planeMapper(planeElement: HTMLElement): PlaneMapper {
   };
 }
 
+export function elementRectInPlane(element: HTMLElement, planeElement: HTMLElement): PlaneRect | null {
+  const offsetRect = offsetRectInPlane(element, planeElement);
+  if (offsetRect) {
+    return offsetRect;
+  }
+  return projectedRectInPlane(element, planeElement);
+}
+
 export function viewportQuad(element: HTMLElement): Point[] {
   const quad = (element as HTMLElement & {
     getBoxQuads?: () => Array<{
@@ -58,6 +73,57 @@ export function viewportQuad(element: HTMLElement): Point[] {
   }
 
   return measuredViewportQuad(element);
+}
+
+function offsetRectInPlane(element: HTMLElement, planeElement: HTMLElement): PlaneRect | null {
+  let left = 0;
+  let top = 0;
+  let current: HTMLElement | null = element;
+  while (current && current !== planeElement) {
+    left += current.offsetLeft;
+    top += current.offsetTop;
+    current = current.offsetParent instanceof HTMLElement ? current.offsetParent : null;
+  }
+  if (current !== planeElement) {
+    return null;
+  }
+  const style = getComputedStyle(element);
+  const width = parsedPixelValue(style.width) ?? element.offsetWidth;
+  const height = parsedPixelValue(style.height) ?? element.offsetHeight;
+  return {
+    left,
+    top,
+    width,
+    height,
+  };
+}
+
+function projectedRectInPlane(element: HTMLElement, planeElement: HTMLElement): PlaneRect | null {
+  const mapper = planeMapper(planeElement);
+  const points = viewportQuad(element).map((point) => mapper.pointFromViewport(point));
+  if (!points.length) {
+    return null;
+  }
+  const xs = points.map((point) => point.x);
+  const ys = points.map((point) => point.y);
+  const left = Math.min(...xs);
+  const top = Math.min(...ys);
+  const width = Math.max(...xs) - left;
+  const height = Math.max(...ys) - top;
+  if (width <= 0 || height <= 0) {
+    return null;
+  }
+  return {
+    left,
+    top,
+    width,
+    height,
+  };
+}
+
+function parsedPixelValue(value: string) {
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 }
 
 function fallbackPlaneMapper(fallbackRect: DOMRect): PlaneMapper {

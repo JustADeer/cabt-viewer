@@ -146,12 +146,12 @@
       return;
     }
 
-    const animationEvents = actionAnimationBatchEvents(currentEvents, seenEventIds, replayMode, scopeChanged);
+    const animationEvents = actionAnimationBatchEvents(currentEvents, seenEventIds);
     const playEvents = animationEvents.filter((event) => {
       if (!isHandPlayEvent(event)) {
         return false;
       }
-      if ((!replayMode || !scopeChanged) && seenEventIds.has(event.id)) {
+      if (seenEventIds.has(event.id)) {
         return false;
       }
       return true;

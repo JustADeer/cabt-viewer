@@ -15,6 +15,7 @@
   import { actionAnimationBatchEvents, actionAnimationStartMs, actionAnimationTiming } from '../cabt/actionAnimationSchedule';
   import { cabtCardToView } from '../cabt/cardView';
   import { CabtAreaType } from '../cabt/types';
+  import { elementRectInPlane, type PlaneRect } from '../dom/planeGeometry';
   import { cardFaceImageUrl } from '../game/cardAssets';
   import { replayAnimationPhaseGapMs } from '../game/replay';
   import type { ActionTimelineEvent } from '../game/types';
@@ -59,12 +60,7 @@
     hiddenElement?: HTMLElement;
   };
 
-  type RectSnapshot = {
-    left: number;
-    top: number;
-    width: number;
-    height: number;
-  };
+  type RectSnapshot = PlaneRect;
 
   let {
     events = [],
@@ -124,16 +120,17 @@
     const plannedMotions = attachedCardMoveMotions(currentPlan);
     const scopeChanged = initialized && currentScopeKey !== lastScopeKey;
     const planChanged = planKey !== lastPlanKey;
-    if (scopeChanged && replayMode) {
+    if (scopeChanged || (plannedMotions.length && planChanged)) {
       clearSprites();
     }
     lastScopeKey = currentScopeKey;
     lastPlanKey = planKey;
 
     if (plannedMotions.length) {
+      const shouldStartPlan = !initialized || planChanged || scopeChanged;
       initialized = true;
       previousAttachedRects = snapshotAttachedRects();
-      if (planChanged && !reduceMotion) {
+      if (shouldStartPlan && !reduceMotion) {
         startAttachedSprites(plannedMotions.flatMap(spriteForMotion));
       }
       markEventsSeen(currentEvents);
@@ -153,7 +150,7 @@
       return;
     }
 
-    const animationEvents = actionAnimationBatchEvents(currentEvents, seenEventIds, replayMode, scopeChanged);
+    const animationEvents = actionAnimationBatchEvents(currentEvents, seenEventIds);
     const moveEvents = animationEvents.filter((event) =>
       isAttachedMoveEvent(event)
       && !seenEventIds.has(event.id));
@@ -291,7 +288,7 @@
     }
 
     const sourceRect = source.rect;
-    const targetRect = localElementRect(target, boardPlane);
+    const targetRect = elementRectInPlane(target, boardPlane);
     if (!targetRect) {
       return [];
     }
@@ -366,7 +363,7 @@
       return anchor.serial !== undefined ? previousSourceForSerial(anchor.serial) : null;
     }
     const ownerCard = ownerPokemonCardElement(element);
-    const rect = ownerCard ? localElementRect(ownerCard, boardPlane) : localElementRect(element, boardPlane);
+    const rect = ownerCard ? elementRectInPlane(ownerCard, boardPlane) : elementRectInPlane(element, boardPlane);
     return rect ? { rect, hiddenElement: element } : anchor.serial !== undefined ? previousSourceForSerial(anchor.serial) : null;
   }
 
@@ -385,7 +382,7 @@
       const visibleEnergy = document.querySelector(`[data-energy-serial="${serial}"]`);
       if (visibleEnergy instanceof HTMLElement) {
         const ownerCard = ownerPokemonCardElement(visibleEnergy);
-        const rect = ownerCard ? localElementRect(ownerCard, boardPlane) : localElementRect(visibleEnergy, boardPlane);
+        const rect = ownerCard ? elementRectInPlane(ownerCard, boardPlane) : elementRectInPlane(visibleEnergy, boardPlane);
         if (!rect) {
           return previousSourceForSerial(serial);
         }
@@ -400,7 +397,7 @@
       const visibleTool = document.querySelector(`[data-tool-serial="${serial}"]`);
       if (visibleTool instanceof HTMLElement) {
         const ownerCard = ownerPokemonCardElement(visibleTool);
-        const rect = ownerCard ? localElementRect(ownerCard, boardPlane) : localElementRect(visibleTool, boardPlane);
+        const rect = ownerCard ? elementRectInPlane(ownerCard, boardPlane) : elementRectInPlane(visibleTool, boardPlane);
         if (!rect) {
           return previousSourceForSerial(serial);
         }
@@ -532,7 +529,7 @@
         continue;
       }
       const ownerCard = ownerPokemonCardElement(element);
-      const rect = ownerCard ? localElementRect(ownerCard, boardPlane) : localElementRect(element, boardPlane);
+      const rect = ownerCard ? elementRectInPlane(ownerCard, boardPlane) : elementRectInPlane(element, boardPlane);
       if (rect) {
         nextRects.set(serial, rect);
       }
@@ -553,41 +550,6 @@
     if (plane instanceof HTMLElement && motionLayer.parentElement !== plane) {
       plane.appendChild(motionLayer);
     }
-  }
-
-  function localElementRect(element: HTMLElement, root: HTMLElement): RectSnapshot | null {
-    let left = 0;
-    let top = 0;
-    let current: HTMLElement | null = element;
-    while (current && current !== root) {
-      left += current.offsetLeft;
-      top += current.offsetTop;
-      current = current.offsetParent instanceof HTMLElement ? current.offsetParent : null;
-    }
-    if (current !== root) {
-      const rootRect = root.getBoundingClientRect();
-      const rect = element.getBoundingClientRect();
-      return {
-        left: rect.left - rootRect.left,
-        top: rect.top - rootRect.top,
-        width: rect.width,
-        height: rect.height,
-      };
-    }
-    const style = getComputedStyle(element);
-    const width = parsedPixelValue(style.width) ?? element.offsetWidth;
-    const height = parsedPixelValue(style.height) ?? element.offsetHeight;
-    return {
-      left,
-      top,
-      width,
-      height,
-    };
-  }
-
-  function parsedPixelValue(value: string) {
-    const parsed = Number.parseFloat(value);
-    return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
   }
 
   function destinationCardElementFor(target: HTMLElement, serial: number, cardId: number): HTMLElement | undefined {

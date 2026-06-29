@@ -79,7 +79,7 @@
       return;
     }
 
-    const animationEvents = actionAnimationBatchEvents(currentEvents, seenEventIds, false, scopeChanged);
+    const animationEvents = actionAnimationBatchEvents(currentEvents, seenEventIds);
     markEventsSeen(currentEvents);
     if (!animationEvents.length || reduceMotion) {
       return;

@@ -1450,6 +1450,7 @@ function animationPhaseMotions(
     || phase.key.startsWith('BoardToDeck:')
     || phase.key.startsWith('DeckDiscard:')
     || phase.key.startsWith('DeckBoardPlace:')
+    || phase.key.startsWith('DeckPrizePlace:')
     || phase.key.startsWith('StadiumMove:')
     || phase.key.startsWith('AttachedMove:')
     || phase.key.startsWith('KnockOut:')
@@ -2239,7 +2240,8 @@ function boardCardMoveMotionsForEvent(
   if (phase.key.startsWith('KnockOut:') && !isKnockOutMove(fromArea, toArea)) {
     return [];
   }
-  if (playerIndex === undefined || cardId === undefined) {
+  const isHiddenPrizePlacement = fromArea === CabtAreaType.DECK && toArea === CabtAreaType.PRIZE;
+  if (playerIndex === undefined || (cardId === undefined && !isHiddenPrizePlacement)) {
     return null;
   }
 
@@ -2258,7 +2260,7 @@ function boardCardMoveMotionsForEvent(
     identity: {
       kind: attachedIdentityKind(fromArea)
         ?? (fromArea === CabtAreaType.STADIUM ? 'stadium' : undefined)
-        ?? (fromArea === CabtAreaType.DECK && toArea === CabtAreaType.DISCARD ? 'card' : 'pokemon'),
+        ?? (fromArea === CabtAreaType.DECK && (toArea === CabtAreaType.DISCARD || toArea === CabtAreaType.PRIZE) ? 'card' : 'pokemon'),
       serial,
       cardId,
       name: stringValue(params?.cardName),
@@ -2470,6 +2472,9 @@ function boardMoveTargetAnchor(
       serial: card.serial,
     };
   }
+  if (toArea === CabtAreaType.PRIZE) {
+    return prizeDestinationAnchorForEvent(view, event, phase.events);
+  }
   if (toArea === CabtAreaType.ACTIVE) {
     const reciprocal = reciprocalBoardPositionEvent(phase, event);
     if (reciprocal) {
@@ -2491,6 +2496,42 @@ function boardMoveTargetAnchor(
     return benchIndex === undefined ? undefined : { kind: 'board-slot', playerIndex, slot: 'bench', slotIndex: benchIndex };
   }
   return undefined;
+}
+
+function prizeDestinationAnchorForEvent(
+  view: GameView,
+  event: ActionTimelineEvent,
+  phaseEvents: ActionTimelineEvent[],
+): AnimationAnchorRef | undefined {
+  const playerIndex = event.playerIndex;
+  if (playerIndex === undefined) {
+    return undefined;
+  }
+  const params = event.params as Record<string, unknown> | undefined;
+  const explicitIndex = finiteNumber(params?.toIndex)
+    ?? finiteNumber(params?.index)
+    ?? finiteNumber(params?.prizeIndex);
+  if (explicitIndex !== undefined) {
+    return { kind: 'prize-card', playerIndex, prizeIndex: explicitIndex };
+  }
+
+  const samePlayerPrizeEvents = phaseEvents.filter((candidate) => {
+    const candidateParams = candidate.params as Record<string, unknown> | undefined;
+    return candidate.playerIndex === playerIndex
+      && isMoveCardKind(candidate.kind)
+      && Number(candidateParams?.fromArea) === CabtAreaType.DECK
+      && Number(candidateParams?.toArea) === CabtAreaType.PRIZE;
+  });
+  const eventIndex = samePlayerPrizeEvents.findIndex((candidate) => candidate.id === event.id);
+  if (eventIndex < 0) {
+    return undefined;
+  }
+  const prizesLeft = view.players[playerIndex]?.prizesLeft ?? 0;
+  return {
+    kind: 'prize-card',
+    playerIndex,
+    prizeIndex: Math.max(0, prizesLeft - samePlayerPrizeEvents.length + eventIndex),
+  };
 }
 
 function reciprocalBoardPositionEvent(phase: AnimationEventPhase, event: ActionTimelineEvent): ActionTimelineEvent | undefined {
@@ -2577,6 +2618,7 @@ function animationPhaseVisibilityClaims(
     || phase.key.startsWith('BoardToDeck:')
     || phase.key.startsWith('DeckDiscard:')
     || phase.key.startsWith('DeckBoardPlace:')
+    || phase.key.startsWith('DeckPrizePlace:')
     || phase.key.startsWith('StadiumMove:')
     || phase.key.startsWith('KnockOut:')
   ) {
@@ -2978,6 +3020,11 @@ function animationPhaseLabel(phase: AnimationEventPhase): string | undefined {
       ? event.message
       : `${actor} put ${cardEventCount} Pokemon from their deck onto the board.`;
   }
+  if (phase.key.startsWith('DeckPrizePlace:')) {
+    return cardEventCount === 1
+      ? event.message
+      : `${actor} set ${cardEventCount} Prize cards.`;
+  }
   if (phase.key.startsWith('DeckReveal:')) {
     return `${actor} revealed the top ${cardEventCount} ${plural(cardEventCount, 'card')} of their deck.`;
   }
@@ -3040,6 +3087,9 @@ function animationPhaseKey(event: ActionTimelineEvent): string | null {
     }
     if (fromArea === CabtAreaType.DECK && (toArea === CabtAreaType.ACTIVE || toArea === CabtAreaType.BENCH)) {
       return `DeckBoardPlace:${playerKey}`;
+    }
+    if (fromArea === CabtAreaType.DECK && toArea === CabtAreaType.PRIZE) {
+      return `DeckPrizePlace:${playerKey}`;
     }
     if (fromArea === CabtAreaType.LOOKING && toArea === CabtAreaType.DECK) {
       return `DeckRevealReturn:${playerKey}`;
@@ -3109,6 +3159,7 @@ function animationPhaseMayHavePlan(phase: AnimationEventPhase): boolean {
     || phase.key.startsWith('Shuffle:')
     || phase.key.startsWith('DeckDiscard:')
     || phase.key.startsWith('DeckBoardPlace:')
+    || phase.key.startsWith('DeckPrizePlace:')
     || phase.key.startsWith('DeckReveal:')
     || phase.key.startsWith('DeckSearchReveal:')
     || phase.key.startsWith('DeckRevealReturn:')
@@ -3314,6 +3365,9 @@ function animationPhaseCardDurationMs(key: string): number {
   if (key.startsWith('DeckBoardPlace:')) {
     return actionAnimationTiming.boardMoveMs;
   }
+  if (key.startsWith('DeckPrizePlace:')) {
+    return actionAnimationTiming.boardMoveMs;
+  }
   if (key.startsWith('DeckRevealReturn:')) {
     return actionAnimationTiming.deckRevealReturnMs;
   }
@@ -3367,6 +3421,9 @@ function animationPhaseStepMs(key: string): number {
     return actionAnimationTiming.deckRevealStepMs;
   }
   if (key.startsWith('DeckBoardPlace:')) {
+    return actionAnimationTiming.handMoveStepMs;
+  }
+  if (key.startsWith('DeckPrizePlace:')) {
     return actionAnimationTiming.handMoveStepMs;
   }
   if (key.startsWith('DeckRevealReturn:')) {

@@ -72,7 +72,7 @@
     scopeKey = '',
     replayMode = false,
     animatePlacements = true,
-    animateTakes = true,
+    animateTakes = false,
     animationPlan,
   }: Props = $props();
 
@@ -147,18 +147,23 @@
       clearAnimations();
     }
 
-    const animationEvents = actionAnimationBatchEvents(currentEvents, seenEventIds, replayMode, scopeChanged);
-    const placementEvents = animatePlacements ? currentEvents.filter((event) => {
+    if (replayMode) {
+      markEventsSeen(currentEvents);
+      return;
+    }
+
+    const animationEvents = actionAnimationBatchEvents(currentEvents, seenEventIds);
+    const placementEvents = animatePlacements ? animationEvents.filter((event) => {
       if (!isPrizePlacementEvent(event)) {
         return false;
       }
-      if ((!replayMode || !scopeChanged) && seenEventIds.has(event.id)) {
+      if (seenEventIds.has(event.id)) {
         return false;
       }
       return true;
     }) : [];
-    const takeEvents = animateTakes && !replayMode
-      ? animationEvents.filter((event) => isPrizeTakeEvent(event) && shouldAnimateEvent(event, scopeChanged))
+    const takeEvents = animateTakes
+      ? animationEvents.filter((event) => isPrizeTakeEvent(event) && shouldAnimateEvent(event))
       : [];
 
     markEventsSeen(currentEvents);
@@ -191,8 +196,8 @@
     return motions.map((motion) => `${motion.id}:${motion.startMs}:${motion.durationMs}`).join('|');
   }
 
-  function shouldAnimateEvent(event: ActionTimelineEvent, scopeChanged: boolean): boolean {
-    return (replayMode && scopeChanged) || !seenEventIds.has(event.id);
+  function shouldAnimateEvent(event: ActionTimelineEvent): boolean {
+    return !seenEventIds.has(event.id);
   }
 
   function isPrizePlacementEvent(event: ActionTimelineEvent): boolean {

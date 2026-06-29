@@ -233,8 +233,9 @@
     <DeckPrizeAnimation
       events={animationEvents}
       scopeKey={animationScopeKey}
+      {animationPlan}
       {replayMode}
-      animateTakes={false}
+      animateTakes={replayMode}
     />
 
     <ActiveDuel

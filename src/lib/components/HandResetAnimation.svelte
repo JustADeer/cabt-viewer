@@ -151,12 +151,12 @@
       return;
     }
 
-    const animationEvents = actionAnimationBatchEvents(currentEvents, seenEventIds, replayMode, scopeChanged);
+    const animationEvents = actionAnimationBatchEvents(currentEvents, seenEventIds);
     const resetEvents = animationEvents.filter((event) => {
       if (!isHandToDeckMove(event)) {
         return false;
       }
-      if ((!replayMode || !scopeChanged) && seenEventIds.has(event.id)) {
+      if (seenEventIds.has(event.id)) {
         return false;
       }
       return true;

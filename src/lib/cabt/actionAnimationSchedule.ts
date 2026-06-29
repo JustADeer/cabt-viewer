@@ -28,12 +28,7 @@ export const actionAnimationTiming = {
 export function actionAnimationBatchEvents(
   events: ActionTimelineEvent[],
   seenEventIds: ReadonlySet<number>,
-  replayMode: boolean,
-  scopeChanged: boolean,
 ): ActionTimelineEvent[] {
-  if (replayMode && scopeChanged) {
-    return events;
-  }
   const firstUnseenIndex = events.findIndex((event) => !seenEventIds.has(event.id));
   return firstUnseenIndex === -1 ? [] : events.slice(firstUnseenIndex);
 }
@@ -178,6 +173,13 @@ function animationPhaseForEvent(event: ActionTimelineEvent): AnimationPhase | nu
     if (fromArea === CabtAreaType.DECK && (toArea === CabtAreaType.ACTIVE || toArea === CabtAreaType.BENCH)) {
       return {
         key: `DeckBoardPlace:${playerKey}`,
+        durationMs: actionAnimationTiming.boardMoveMs,
+        stepMs: actionAnimationTiming.handMoveStepMs,
+      };
+    }
+    if (fromArea === CabtAreaType.DECK && toArea === CabtAreaType.PRIZE) {
+      return {
+        key: `DeckPrizePlace:${playerKey}`,
         durationMs: actionAnimationTiming.boardMoveMs,
         stepMs: actionAnimationTiming.handMoveStepMs,
       };

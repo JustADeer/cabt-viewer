@@ -213,23 +213,15 @@ describe('actionAnimationBatchEvents', () => {
       event(4, 'Draw', { cardId: 3, serial: 12 }),
     ];
 
-    expect(actionAnimationBatchEvents(events, new Set([1, 2]), false, true)).toEqual([
+    expect(actionAnimationBatchEvents(events, new Set([1, 2]))).toEqual([
       events[2],
       events[3],
     ]);
-    expect(actionAnimationStartMs(actionAnimationBatchEvents(events, new Set([1, 2]), false, true), events[3])).toBe(
+    expect(actionAnimationStartMs(actionAnimationBatchEvents(events, new Set([1, 2])), events[3])).toBe(
       actionAnimationTiming.handMoveMs,
     );
   });
 
-  it('replays the full phase event set when a replay scope changes', () => {
-    const events: ActionTimelineEvent[] = [
-      event(1, 'Draw', { cardId: 3, serial: 12 }),
-      event(2, 'Draw', { cardId: 4, serial: 13 }),
-    ];
-
-    expect(actionAnimationBatchEvents(events, new Set([1, 2]), true, true)).toEqual(events);
-  });
 });
 
 function event(id: number, kind: string, params: Record<string, unknown>): ActionTimelineEvent {
