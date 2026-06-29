@@ -1441,6 +1441,7 @@ function animationPhaseMotions(phase: AnimationEventPhase, view: GameView): Anim
     || phase.key.startsWith('BoardToDeck:')
     || phase.key.startsWith('DeckBoardPlace:')
     || phase.key.startsWith('StadiumMove:')
+    || phase.key.startsWith('AttachedMove:')
   ) {
     return boardCardMoveMotions(phase, view);
   }
@@ -1490,7 +1491,7 @@ function boardCardMoveMotionsForEvent(
     sourceAnchor,
     targetAnchor,
     identity: {
-      kind: fromArea === CabtAreaType.STADIUM ? 'stadium' : 'pokemon',
+      kind: attachedIdentityKind(fromArea) ?? (fromArea === CabtAreaType.STADIUM ? 'stadium' : 'pokemon'),
       serial,
       cardId,
       name: stringValue(params?.cardName),
@@ -1498,6 +1499,7 @@ function boardCardMoveMotionsForEvent(
     removeSprite: (fromArea === CabtAreaType.ACTIVE || fromArea === CabtAreaType.BENCH) && (toArea === CabtAreaType.ACTIVE || toArea === CabtAreaType.BENCH)
       ? 'scope-exit'
       : 'prepaint',
+    durationMs: cardMoveDurationMs(fromArea, toArea),
   })];
 }
 
@@ -1554,6 +1556,7 @@ function cardMoveMotion(input: {
   targetAnchor: AnimationAnchorRef;
   identity: AnimationIdentity;
   removeSprite: 'prepaint' | 'scope-exit';
+  durationMs?: number;
 }): AnimationMotion {
   return {
     id: input.id,
@@ -1563,7 +1566,7 @@ function cardMoveMotion(input: {
     targetAnchor: input.targetAnchor,
     coordinateSpace: 'board',
     startMs: actionAnimationStartMs(input.phase.events, input.event),
-    durationMs: actionAnimationTiming.boardMoveMs,
+    durationMs: input.durationMs ?? actionAnimationTiming.boardMoveMs,
     spriteVisual: {
       kind: 'anchor-snapshot',
       anchor: input.sourceAnchor,
@@ -1575,6 +1578,16 @@ function cardMoveMotion(input: {
       prepaintFrames: 2,
     },
   };
+}
+
+function cardMoveDurationMs(fromArea: number, toArea: number): number {
+  if (fromArea === CabtAreaType.ENERGY || fromArea === CabtAreaType.TOOL) {
+    return actionAnimationTiming.handMoveMs;
+  }
+  if (fromArea === CabtAreaType.STADIUM && toArea === CabtAreaType.DISCARD) {
+    return actionAnimationTiming.stadiumMoveMs;
+  }
+  return actionAnimationTiming.boardMoveMs;
 }
 
 function boardMoveSourceAnchor(view: GameView, event: ActionTimelineEvent, fromArea: number): AnimationAnchorRef | undefined {
@@ -1590,8 +1603,54 @@ function boardMoveSourceAnchor(view: GameView, event: ActionTimelineEvent, fromA
     const card = player?.stadium.find((candidate) => eventCardMatches(candidate, event));
     return card ? { kind: 'stadium-card', playerIndex, serial: card.serial } : undefined;
   }
+  if (fromArea === CabtAreaType.ENERGY || fromArea === CabtAreaType.TOOL) {
+    return attachedSourceAnchorForEvent(view.players[playerIndex], event, fromArea);
+  }
   if (fromArea === CabtAreaType.ACTIVE || fromArea === CabtAreaType.BENCH) {
     return boardSlotAnchorForEvent(view.players[playerIndex], event);
+  }
+  return undefined;
+}
+
+function attachedSourceAnchorForEvent(
+  player: PlayerView | undefined,
+  event: ActionTimelineEvent,
+  fromArea: number,
+): AnimationAnchorRef | undefined {
+  if (!player) {
+    return undefined;
+  }
+  const params = event.params as Record<string, unknown> | undefined;
+  const serial = finiteNumber(params?.serial);
+  const cardId = finiteNumber(params?.cardId);
+  const matches = (card: CardView) =>
+    (serial !== undefined && card.serial === serial)
+    || (serial === undefined && cardId !== undefined && card.id === cardId);
+  const slots: Array<{ slot: PokemonSlotView; kind: 'active' | 'bench' }> = [
+    { slot: player.active, kind: 'active' },
+    ...player.bench.map((slot) => ({ slot, kind: 'bench' as const })),
+  ];
+  for (const { slot, kind } of slots) {
+    const cards = fromArea === CabtAreaType.ENERGY ? slot.energy : slot.tools;
+    if (cards.some(matches)) {
+      return {
+        kind: fromArea === CabtAreaType.ENERGY ? 'attached-energy' : 'attached-tool',
+        playerIndex: player.index,
+        slot: kind,
+        slotIndex: slot.index,
+        serial,
+      };
+    }
+  }
+  return undefined;
+}
+
+function attachedIdentityKind(fromArea: number): AnimationIdentity['kind'] | undefined {
+  if (fromArea === CabtAreaType.ENERGY) {
+    return 'energy';
+  }
+  if (fromArea === CabtAreaType.TOOL) {
+    return 'tool';
   }
   return undefined;
 }

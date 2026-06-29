@@ -1173,6 +1173,16 @@ describe('cabtReplayToSnapshot', () => {
     expect(step.animationPhases?.[1].view.players[0].playZone.map((card) => card.serial)).toEqual([35]);
     expect(step.animationPhases?.[1].view.players[0].discard).toHaveLength(0);
     expect(step.animationPhases?.[1].view.players[1].active.energy.map((card) => card.serial)).toEqual([70]);
+    expect(step.animationPhases?.[1].animationPlan?.motions).toMatchObject([
+      {
+        kind: 'card-move',
+        coordinateSpace: 'board',
+        sourceAnchor: { kind: 'attached-energy', playerIndex: 1, slot: 'active', slotIndex: 0, serial: 70 },
+        targetAnchor: { kind: 'discard-pile', playerIndex: 1 },
+        identity: { kind: 'energy', serial: 70, cardId: 3 },
+        durationMs: 360,
+      },
+    ]);
     expect(step.displayView?.players[0].playZone).toHaveLength(0);
     expect(step.displayView?.players[0].discard.map((card) => card.serial)).toEqual([35]);
     expect(snapshot.views[step.stateIndex].players[1].discard.map((card) => card.serial)).toEqual([70]);
@@ -3065,6 +3075,16 @@ describe('cabtReplayToSnapshot', () => {
     const step = snapshot.steps[1];
     expect(step.animationPhases?.map((phase) => phase.key.replace(/:\d+:.+$/, ''))).toEqual(['AttachedMove']);
     expect(step.animationPhases?.[0].view.players[0].active.energy.map((card) => card.serial)).toEqual([91]);
+    expect(step.animationPhases?.[0].animationPlan?.motions).toMatchObject([
+      {
+        kind: 'card-move',
+        coordinateSpace: 'board',
+        sourceAnchor: { kind: 'attached-energy', playerIndex: 0, slot: 'active', slotIndex: 0, serial: 91 },
+        targetAnchor: { kind: 'discard-pile', playerIndex: 0 },
+        identity: { kind: 'energy', serial: 91, cardId: 3 },
+        durationMs: 360,
+      },
+    ]);
     expect(snapshot.views[step.stateIndex].players[0].active.energy).toHaveLength(0);
     expect(snapshot.views[step.stateIndex].players[0].discard.map((card) => card.serial)).toEqual([91]);
   });

@@ -1,11 +1,17 @@
 <script lang="ts">
   import { onDestroy, onMount } from 'svelte';
   import {
+    resolveAnimationAnchorElements,
+    type AnimationAnchorRef,
+    type AnimationIdentity,
+  } from '../animations/animationAnchors';
+  import {
     hideElementForAnimation,
     releaseElementVisibilityClaim,
     type ElementVisibilityClaim,
   } from '../animations/animationVisibilityClaims';
   import type { AnimationVisibilityRole } from '../animations/animationVisibility';
+  import type { CardMoveAnimationMotion, ReplayAnimationPhasePlan } from '../animations/replayAnimationPlan';
   import { actionAnimationBatchEvents, actionAnimationStartMs, actionAnimationTiming } from '../cabt/actionAnimationSchedule';
   import { cabtCardToView } from '../cabt/cardView';
   import { CabtAreaType } from '../cabt/types';
@@ -17,6 +23,7 @@
     events?: ActionTimelineEvent[];
     scopeKey?: string | number;
     replayMode?: boolean;
+    animationPlan?: ReplayAnimationPhasePlan;
   };
 
   type AttachedMoveSprite = {
@@ -36,6 +43,7 @@
     startRotation: number;
     targetRotation: number;
     delayMs: number;
+    durationMs: number;
     hiddenElement?: HTMLElement;
     destinationCardElement?: HTMLElement;
   };
@@ -61,6 +69,7 @@
     events = [],
     scopeKey = '',
     replayMode = false,
+    animationPlan,
   }: Props = $props();
 
   const timers: ReturnType<typeof setTimeout>[] = [];
@@ -71,6 +80,7 @@
   let initialized = false;
   let lastScopeKey: string | number = '';
   let lastAnimatedReplayScopeKey: string | number = '';
+  let lastPlanKey = '';
   let reduceMotion = $state(false);
   let activeSprites: ActiveAttachedMoveSprite[] = [];
 
@@ -109,12 +119,29 @@
   $effect(() => {
     const currentEvents = events;
     const currentScopeKey = scopeKey;
+    const currentPlan = animationPlan;
+    const planKey = currentPlanKey(currentPlan);
+    const plannedMotions = attachedCardMoveMotions(currentPlan);
     const scopeChanged = initialized && currentScopeKey !== lastScopeKey;
+    const planChanged = planKey !== lastPlanKey;
     if (scopeChanged && replayMode) {
       clearSprites();
       lastAnimatedReplayScopeKey = '';
     }
     lastScopeKey = currentScopeKey;
+    lastPlanKey = planKey;
+
+    if (plannedMotions.length) {
+      initialized = true;
+      previousAttachedRects = snapshotAttachedRects();
+      if (planChanged && !reduceMotion) {
+        const started = startAttachedSprites(plannedMotions.flatMap(spriteForMotion));
+        if (started && replayMode) {
+          lastAnimatedReplayScopeKey = currentScopeKey;
+        }
+      }
+      return;
+    }
 
     if (!initialized) {
       for (const event of currentEvents) {
@@ -155,7 +182,10 @@
       return false;
     }
 
-    const nextSprites = moveEvents.flatMap((event) => spriteForEvent(event, animationEvents));
+    return startAttachedSprites(moveEvents.flatMap((event) => spriteForEvent(event, animationEvents)));
+  }
+
+  function startAttachedSprites(nextSprites: AttachedMoveSprite[]): boolean {
     if (!nextSprites.length) {
       return false;
     }
@@ -182,16 +212,71 @@
         releaseActiveSprite(activeSprite);
         element.remove();
         activeSprites = activeSprites.filter((item) => item.element !== element);
-      }, sprite.delayMs + actionAnimationTiming.handMoveMs + replayHandoffHoldMs());
+      }, sprite.delayMs + sprite.durationMs + replayHandoffHoldMs());
       timers.push(startTimer, cleanupTimer);
     }
     return true;
+  }
+
+  function currentPlanKey(plan: ReplayAnimationPhasePlan | undefined) {
+    return plan ? `${plan.key}:${plan.motions.map((motion) => motion.id).join(',')}` : '';
+  }
+
+  function attachedCardMoveMotions(plan: ReplayAnimationPhasePlan | undefined): CardMoveAnimationMotion[] {
+    return (plan?.motions ?? []).filter((motion): motion is CardMoveAnimationMotion =>
+      motion.kind === 'card-move'
+      && motion.coordinateSpace === 'board'
+      && (motion.sourceAnchor.kind === 'attached-energy' || motion.sourceAnchor.kind === 'attached-tool'));
+  }
+
+  function spriteForMotion(motion: CardMoveAnimationMotion): AttachedMoveSprite[] {
+    const source = sourceForAnchor(motion.sourceAnchor);
+    const target = targetElementForAnchor(motion.targetAnchor);
+    const boardPlane = boardPlaneElement();
+    if (!source || !target || !boardPlane) {
+      return [];
+    }
+
+    return spritesForResolvedMove({
+      id: motion.id,
+      source,
+      target,
+      identity: motion.identity,
+      delayMs: motion.startMs,
+      durationMs: motion.durationMs,
+    });
   }
 
   function spriteForEvent(event: ActionTimelineEvent, animationEvents: ActionTimelineEvent[]): AttachedMoveSprite[] {
     const params = event.params as Record<string, unknown> | undefined;
     const source = sourceForEvent(event);
     const target = targetElementForEvent(event);
+    const serial = Number(params?.serial);
+    const cardId = Number(params?.cardId);
+    return spritesForResolvedMove({
+      id: `${event.id}-${Number.isFinite(serial) ? serial : cardId}`,
+      source,
+      target,
+      identity: {
+        kind: Number(params?.fromArea) === CabtAreaType.TOOL ? 'tool' : 'energy',
+        serial: Number.isFinite(serial) ? serial : undefined,
+        cardId: Number.isFinite(cardId) ? cardId : undefined,
+      },
+      delayMs: actionAnimationStartMs(animationEvents, event),
+      durationMs: actionAnimationTiming.handMoveMs,
+    });
+  }
+
+  function spritesForResolvedMove(input: {
+    id: string;
+    source: AttachedMoveSource | null;
+    target: HTMLElement | null;
+    identity?: AnimationIdentity;
+    delayMs: number;
+    durationMs: number;
+  }): AttachedMoveSprite[] {
+    const source = input.source;
+    const target = input.target;
     const boardPlane = boardPlaneElement();
     if (!source || !target || !boardPlane) {
       return [];
@@ -208,21 +293,21 @@
 
     const sourceCenter = centerOf(sourceRect);
     const targetCenter = centerOf(targetRect);
-    const serial = Number(params?.serial);
-    const cardId = Number(params?.cardId);
-    const card = cabtCardToView(cardId);
+    const serial = input.identity?.serial;
+    const cardId = input.identity?.cardId;
+    const card = cardId !== undefined ? cabtCardToView(cardId) : undefined;
     const width = sourceRect.width;
     const height = sourceRect.height;
     const targetScale = Math.min(targetRect.width / sourceRect.width, targetRect.height / sourceRect.height);
     const targetRotation = targetRotationFor(target);
     return [{
-      id: `${event.id}-${Number.isFinite(serial) ? serial : cardId}`,
-      imageUrl: cardFaceImageUrl(card) ?? '',
-      label: card.name,
-      setLabel: [card.set, card.setNumber].filter(Boolean).join(' '),
-      typeClass: card.energyType !== undefined || card.superType === 'Energy' || card.name.includes('Energy')
+      id: input.id,
+      imageUrl: card ? (cardFaceImageUrl(card) ?? '') : '',
+      label: card?.name ?? input.identity?.name ?? 'Card',
+      setLabel: card ? [card.set, card.setNumber].filter(Boolean).join(' ') : '',
+      typeClass: input.identity?.kind === 'energy' || card?.energyType !== undefined || card?.superType === 'Energy' || card?.name.includes('Energy')
         ? 'energy'
-        : card.trainerType !== undefined || card.superType === 'Trainer'
+        : input.identity?.kind === 'tool' || card?.trainerType !== undefined || card?.superType === 'Trainer'
           ? 'trainer'
           : 'pokemon',
       left: sourceCenter.x - width / 2,
@@ -235,7 +320,8 @@
       targetScale: Number.isFinite(targetScale) && targetScale > 0 ? targetScale : 1,
       startRotation: source.hiddenElement ? sourceRotationFor(source.hiddenElement) : targetRotation,
       targetRotation,
-      delayMs: actionAnimationStartMs(animationEvents, event),
+      delayMs: input.delayMs,
+      durationMs: input.durationMs,
       hiddenElement: source.hiddenElement,
       destinationCardElement: destinationCardElementFor(target, serial, cardId),
     }];
@@ -256,6 +342,23 @@
         Number(params?.toArea) === CabtAreaType.DISCARD
         || Number(params?.toArea) === CabtAreaType.DECK
       );
+  }
+
+  function sourceForAnchor(anchor: AnimationAnchorRef): AttachedMoveSource | null {
+    if (anchor.kind !== 'attached-energy' && anchor.kind !== 'attached-tool') {
+      return null;
+    }
+    const element = elementForAnchor(anchor);
+    if (!element) {
+      return anchor.serial !== undefined ? previousSourceForSerial(anchor.serial) : null;
+    }
+    const boardPlane = boardPlaneElement();
+    if (!boardPlane) {
+      return anchor.serial !== undefined ? previousSourceForSerial(anchor.serial) : null;
+    }
+    const ownerCard = ownerPokemonCardElement(element);
+    const rect = ownerCard ? localElementRect(ownerCard, boardPlane) : localElementRect(element, boardPlane);
+    return rect ? { rect, hiddenElement: element } : anchor.serial !== undefined ? previousSourceForSerial(anchor.serial) : null;
   }
 
   function sourceForEvent(event: ActionTimelineEvent): AttachedMoveSource | null {
@@ -321,6 +424,29 @@
     if (toArea === CabtAreaType.DECK) {
       const anchor = document.querySelector(`[data-card-anchor="player:${playerIndex}:deck"]`);
       return anchor?.closest('.deck-pile') as HTMLElement | null;
+    }
+    return null;
+  }
+
+  function targetElementForAnchor(anchor: AnimationAnchorRef): HTMLElement | null {
+    const element = elementForAnchor(anchor);
+    if (!element) {
+      return null;
+    }
+    if (anchor.kind === 'deck-top') {
+      return element.closest('.deck-pile') as HTMLElement | null;
+    }
+    return element;
+  }
+
+  function elementForAnchor(anchor: AnimationAnchorRef): HTMLElement | null {
+    const exact = resolveAnimationAnchorElements(anchor).at(0);
+    if (exact) {
+      return exact;
+    }
+    if ('serial' in anchor && anchor.serial !== undefined) {
+      const fallbackAnchor = { ...anchor, serial: undefined } as AnimationAnchorRef;
+      return resolveAnimationAnchorElements(fallbackAnchor).at(0) ?? null;
     }
     return null;
   }
@@ -486,6 +612,7 @@
       `--attached-move-start-rotation: ${sprite.startRotation.toFixed(1)}deg`,
       `--attached-move-target-rotation: ${sprite.targetRotation.toFixed(1)}deg`,
       `--attached-move-delay: ${sprite.delayMs}ms`,
+      `--attached-move-duration: ${sprite.durationMs}ms`,
     ].join('; ');
   }
 
@@ -546,7 +673,7 @@
     display: grid;
     place-items: center;
     transform-origin: center;
-    animation: attached-card-move 360ms cubic-bezier(0.2, 0.82, 0.22, 1) var(--attached-move-delay) both;
+    animation: attached-card-move var(--attached-move-duration, 360ms) cubic-bezier(0.2, 0.82, 0.22, 1) var(--attached-move-delay) both;
     will-change: transform, opacity;
   }
 
