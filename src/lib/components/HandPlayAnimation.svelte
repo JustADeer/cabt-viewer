@@ -124,14 +124,13 @@
       if (!reduceMotion && (scopeChanged || planChanged)) {
         startPlannedPlay(plannedMotions);
       }
+      markEventsSeen(currentEvents);
       previousCardRects = snapshotHandCardRects();
       return;
     }
 
     if (!initialized) {
-      for (const event of currentEvents) {
-        seenEventIds.add(event.id);
-      }
+      markEventsSeen(currentEvents);
       initialized = true;
       previousCardRects = snapshotHandCardRects();
       return;
@@ -139,6 +138,12 @@
 
     if (replayMode && scopeChanged) {
       clearPlays();
+    }
+
+    if (replayMode) {
+      markEventsSeen(currentEvents);
+      previousCardRects = snapshotHandCardRects();
+      return;
     }
 
     const animationEvents = actionAnimationBatchEvents(currentEvents, seenEventIds, replayMode, scopeChanged);
@@ -152,15 +157,19 @@
       return true;
     });
 
-    for (const event of currentEvents) {
-      seenEventIds.add(event.id);
-    }
+    markEventsSeen(currentEvents);
 
     if (playEvents.length) {
       startPlay(playEvents, animationEvents);
     }
     previousCardRects = snapshotHandCardRects();
   });
+
+  function markEventsSeen(currentEvents: ActionTimelineEvent[]) {
+    for (const event of currentEvents) {
+      seenEventIds.add(event.id);
+    }
+  }
 
   function currentPlanKey(plan: ReplayAnimationPhasePlan | undefined): string {
     return plan ? `${plan.key}:${plan.motions.map((motion) => motion.id).join(',')}` : '';

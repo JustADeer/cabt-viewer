@@ -80,7 +80,6 @@
   let seenEventIds = new Set<number>();
   let initialized = false;
   let lastScopeKey: string | number = '';
-  let lastAnimatedReplayScopeKey: string | number = '';
   let lastPlanKey = '';
   let reduceMotion = $state(false);
   let activeSprites: ActiveAttachedMoveSprite[] = [];
@@ -127,7 +126,6 @@
     const planChanged = planKey !== lastPlanKey;
     if (scopeChanged && replayMode) {
       clearSprites();
-      lastAnimatedReplayScopeKey = '';
     }
     lastScopeKey = currentScopeKey;
     lastPlanKey = planKey;
@@ -136,47 +134,43 @@
       initialized = true;
       previousAttachedRects = snapshotAttachedRects();
       if (planChanged && !reduceMotion) {
-        const started = startAttachedSprites(plannedMotions.flatMap(spriteForMotion));
-        if (started && replayMode) {
-          lastAnimatedReplayScopeKey = currentScopeKey;
-        }
+        startAttachedSprites(plannedMotions.flatMap(spriteForMotion));
       }
+      markEventsSeen(currentEvents);
       return;
     }
 
     if (!initialized) {
-      for (const event of currentEvents) {
-        seenEventIds.add(event.id);
-      }
+      markEventsSeen(currentEvents);
       initialized = true;
       previousAttachedRects = snapshotAttachedRects();
-      if (!replayMode || !currentEvents.some(isAttachedMoveEvent)) {
-        return;
-      }
+      return;
     }
 
-    const animationEvents = replayMode && currentScopeKey !== lastAnimatedReplayScopeKey
-      ? currentEvents
-      : actionAnimationBatchEvents(currentEvents, seenEventIds, replayMode, scopeChanged);
+    if (replayMode) {
+      markEventsSeen(currentEvents);
+      previousAttachedRects = snapshotAttachedRects();
+      return;
+    }
+
+    const animationEvents = actionAnimationBatchEvents(currentEvents, seenEventIds, replayMode, scopeChanged);
     const moveEvents = animationEvents.filter((event) =>
       isAttachedMoveEvent(event)
-      && (
-        (replayMode && currentScopeKey !== lastAnimatedReplayScopeKey)
-        || !seenEventIds.has(event.id)
-      ));
+      && !seenEventIds.has(event.id));
 
-    for (const event of currentEvents) {
-      seenEventIds.add(event.id);
-    }
+    markEventsSeen(currentEvents);
 
     if (moveEvents.length) {
-      const started = startAttachedMoves(moveEvents, animationEvents);
-      if (started && replayMode) {
-        lastAnimatedReplayScopeKey = currentScopeKey;
-      }
+      startAttachedMoves(moveEvents, animationEvents);
     }
     previousAttachedRects = snapshotAttachedRects();
   });
+
+  function markEventsSeen(currentEvents: ActionTimelineEvent[]) {
+    for (const event of currentEvents) {
+      seenEventIds.add(event.id);
+    }
+  }
 
   function startAttachedMoves(moveEvents: ActionTimelineEvent[], animationEvents: ActionTimelineEvent[]): boolean {
     if (reduceMotion) {

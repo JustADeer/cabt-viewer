@@ -90,23 +90,24 @@
       if (discards.length) {
         clearDiscards();
       }
-      for (const event of currentEvents) {
-        seenEventIds.add(event.id);
-      }
+      markEventsSeen(currentEvents);
       initialized = true;
       return;
     }
 
     if (!initialized) {
-      for (const event of currentEvents) {
-        seenEventIds.add(event.id);
-      }
+      markEventsSeen(currentEvents);
       initialized = true;
       return;
     }
 
     if (scopeChanged && replayMode) {
       clearDiscards();
+    }
+
+    if (replayMode) {
+      markEventsSeen(currentEvents);
+      return;
     }
 
     const animationEvents = actionAnimationBatchEvents(currentEvents, seenEventIds, replayMode, scopeChanged);
@@ -120,14 +121,18 @@
       return true;
     });
 
-    for (const event of currentEvents) {
-      seenEventIds.add(event.id);
-    }
+    markEventsSeen(currentEvents);
 
     if (discardEvents.length) {
       startDiscard(discardEvents, animationEvents);
     }
   });
+
+  function markEventsSeen(currentEvents: ActionTimelineEvent[]) {
+    for (const event of currentEvents) {
+      seenEventIds.add(event.id);
+    }
+  }
 
   function isDeckDiscardEvent(event: ActionTimelineEvent) {
     const params = event.params as Record<string, unknown> | undefined;

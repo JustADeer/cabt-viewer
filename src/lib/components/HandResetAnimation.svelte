@@ -2,7 +2,6 @@
   import { cardBackCssVar, cardFaceImageUrl } from '../game/cardAssets';
   import { onDestroy, onMount } from 'svelte';
   import {
-    centralVisibilityClaimOwnsElement,
     hideElementForAnimation,
     releaseElementVisibilityClaim,
     type ElementVisibilityClaim,
@@ -71,10 +70,6 @@
     restoreConnectedSourcesAfterMs?: number;
   };
 
-  type SourceHideOptions = {
-    skipCentralSourceClaims?: boolean;
-  };
-
   let {
     events = [],
     scopeKey = '',
@@ -131,30 +126,29 @@
       initialized = true;
       if (shouldStartPlan) {
         clearResets({ restoreSources: false, restoreConnectedSourcesAfterMs: handOutroSettleMs });
-        if (reduceMotion || startPlannedReset(plannedMotions)) {
-          for (const event of currentEvents) {
-            seenEventIds.add(event.id);
-          }
-          return;
+        if (!reduceMotion) {
+          startPlannedReset(plannedMotions);
         }
       } else {
-        for (const event of currentEvents) {
-          seenEventIds.add(event.id);
-        }
+        markEventsSeen(currentEvents);
         return;
       }
+      markEventsSeen(currentEvents);
+      return;
     }
 
     if (!initialized) {
-      for (const event of currentEvents) {
-        seenEventIds.add(event.id);
-      }
+      markEventsSeen(currentEvents);
       initialized = true;
       return;
     }
 
-    if (replayMode && scopeChanged) {
-      clearResets({ restoreSources: false, restoreConnectedSourcesAfterMs: handOutroSettleMs });
+    if (replayMode) {
+      if (scopeChanged) {
+        clearResets({ restoreSources: false, restoreConnectedSourcesAfterMs: handOutroSettleMs });
+      }
+      markEventsSeen(currentEvents);
+      return;
     }
 
     const animationEvents = actionAnimationBatchEvents(currentEvents, seenEventIds, replayMode, scopeChanged);
@@ -168,14 +162,18 @@
       return true;
     });
 
+    markEventsSeen(currentEvents);
+
+    if (resetEvents.length) {
+      startReset(resetEvents, animationEvents);
+    }
+  });
+
+  function markEventsSeen(currentEvents: ActionTimelineEvent[]) {
     for (const event of currentEvents) {
       seenEventIds.add(event.id);
     }
-
-    if (resetEvents.length) {
-      startReset(resetEvents, animationEvents, { skipCentralSourceClaims: plannedMotions.length > 0 });
-    }
-  });
+  }
 
   function handToDeckPlanMotions(plan: ReplayAnimationPhasePlan | undefined): CardMoveAnimationMotion[] {
     return (plan?.motions ?? []).filter((motion): motion is CardMoveAnimationMotion =>
@@ -213,7 +211,6 @@
   function startReset(
     resetEvents: ActionTimelineEvent[],
     animationEvents: ActionTimelineEvent[],
-    hideOptions: SourceHideOptions = {},
   ) {
     if (reduceMotion) {
       return;
@@ -229,7 +226,7 @@
       id: nextAnimationId++,
       sprites,
     };
-    const animationSources = hideSources(sprites.map((sprite) => sprite.sourceElement), hideOptions);
+    const animationSources = hideSources(sprites.map((sprite) => sprite.sourceElement));
     resets = [...resets, animation];
     const timer = setTimeout(() => {
       if (!replayMode) {
@@ -460,12 +457,9 @@
     };
   }
 
-  function hideSources(sources: HTMLElement[], options: SourceHideOptions = {}) {
+  function hideSources(sources: HTMLElement[]) {
     const hidden: HiddenResetSource[] = [];
     for (const source of sources) {
-      if (shouldSkipLocalSourceClaim(source, options)) {
-        continue;
-      }
       hidden.push(hideElementForAnimation({
         element: source,
         scopeKey,
@@ -476,18 +470,6 @@
     }
     hiddenSources = [...hiddenSources, ...hidden];
     return hidden;
-  }
-
-  function shouldSkipLocalSourceClaim(element: HTMLElement, options: SourceHideOptions): boolean {
-    return !!options.skipCentralSourceClaims && centralSourceClaimOwns(element);
-  }
-
-  function centralSourceClaimOwns(element: HTMLElement): boolean {
-    return centralVisibilityClaimOwnsElement({
-      element,
-      role: 'source',
-      claims: animationPlan?.visibilityClaims,
-    });
   }
 
   function showSources(sources: HiddenResetSource[]) {

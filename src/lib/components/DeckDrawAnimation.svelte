@@ -2,7 +2,6 @@
   import { cardBackCssVar, cardFaceImageUrl } from '../game/cardAssets';
   import { onDestroy, onMount } from 'svelte';
   import {
-    centralVisibilityClaimOwnsElement,
     hideElementForAnimation,
     releaseElementVisibilityClaim,
     type ElementVisibilityClaim,
@@ -51,10 +50,6 @@
   type PlayerDrawSprites = {
     sprites: DrawSprite[];
     hiddenTargets: HTMLElement[];
-  };
-
-  type DestinationHideOptions = {
-    skipCentralDestinationClaims?: boolean;
   };
 
   type HiddenDrawTarget = ElementVisibilityClaim;
@@ -110,30 +105,29 @@
       initialized = true;
       if (shouldStartPlan) {
         clearDraws();
-        if (reduceMotion || startPlannedDraw(plannedMotions)) {
-          for (const event of currentEvents) {
-            seenEventIds.add(event.id);
-          }
-          return;
+        if (!reduceMotion) {
+          startPlannedDraw(plannedMotions);
         }
       } else {
-        for (const event of currentEvents) {
-          seenEventIds.add(event.id);
-        }
+        markEventsSeen(currentEvents);
         return;
       }
+      markEventsSeen(currentEvents);
+      return;
     }
 
     if (!initialized) {
-      for (const event of currentEvents) {
-        seenEventIds.add(event.id);
-      }
+      markEventsSeen(currentEvents);
       initialized = true;
       return;
     }
 
-    if (replayMode && scopeChanged) {
-      clearDraws();
+    if (replayMode) {
+      if (scopeChanged) {
+        clearDraws();
+      }
+      markEventsSeen(currentEvents);
+      return;
     }
 
     const animationEvents = actionAnimationBatchEvents(currentEvents, seenEventIds, replayMode, scopeChanged);
@@ -147,14 +141,18 @@
       return true;
     });
 
+    markEventsSeen(currentEvents);
+
+    if (drawEvents.length) {
+      startDraw(drawEvents, animationEvents);
+    }
+  });
+
+  function markEventsSeen(currentEvents: ActionTimelineEvent[]) {
     for (const event of currentEvents) {
       seenEventIds.add(event.id);
     }
-
-    if (drawEvents.length) {
-      startDraw(drawEvents, animationEvents, { skipCentralDestinationClaims: plannedMotions.length > 0 });
-    }
-  });
+  }
 
   function drawPlanMotions(plan: ReplayAnimationPhasePlan | undefined): CardMoveAnimationMotion[] {
     return (plan?.motions ?? []).filter((motion): motion is CardMoveAnimationMotion =>
@@ -275,7 +273,6 @@
   function startDraw(
     drawEvents: ActionTimelineEvent[],
     animationEvents: ActionTimelineEvent[],
-    hideOptions: DestinationHideOptions = {},
   ) {
     if (reduceMotion) {
       return;
@@ -299,7 +296,7 @@
     if (!sprites.length) {
       return;
     }
-    const hiddenTargets = hideTargets(targetElements, hideOptions);
+    const hiddenTargets = hideTargets(targetElements);
 
     const animation: DrawAnimation = {
       id: nextAnimationId++,
@@ -405,12 +402,9 @@
     });
   }
 
-  function hideTargets(targets: HTMLElement[], options: DestinationHideOptions = {}) {
+  function hideTargets(targets: HTMLElement[]) {
     const hiddenTargets: HiddenDrawTarget[] = [];
     for (const target of targets) {
-      if (shouldSkipLocalDestinationClaim(target, options)) {
-        continue;
-      }
       hiddenTargets.push(hideElementForAnimation({
         element: target,
         scopeKey,
@@ -419,18 +413,6 @@
       }));
     }
     return hiddenTargets;
-  }
-
-  function shouldSkipLocalDestinationClaim(element: HTMLElement, options: DestinationHideOptions): boolean {
-    return !!options.skipCentralDestinationClaims && centralDestinationClaimOwns(element);
-  }
-
-  function centralDestinationClaimOwns(element: HTMLElement): boolean {
-    return centralVisibilityClaimOwnsElement({
-      element,
-      role: 'destination',
-      claims: animationPlan?.visibilityClaims,
-    });
   }
 
   function showTargets(targets: HiddenDrawTarget[]) {

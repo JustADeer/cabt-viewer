@@ -2,7 +2,6 @@
   import { cardBackCssVar, cardFaceImageUrl } from '../game/cardAssets';
   import { onDestroy, onMount } from 'svelte';
   import {
-    centralVisibilityClaimOwnsElement,
     hideElementForAnimation,
     releaseElementVisibilityClaim,
     type ElementVisibilityClaim,
@@ -68,10 +67,6 @@
 
   type HiddenPrizeTarget = ElementVisibilityClaim;
 
-  type DestinationHideOptions = {
-    skipCentralDestinationClaims?: boolean;
-  };
-
   let {
     events = [],
     scopeKey = '',
@@ -131,24 +126,19 @@
       initialized = true;
       if (shouldStartPlan) {
         clearAnimations();
-        if (reduceMotion || startPlannedPrizeTake(plannedTakeMotions)) {
-          for (const event of currentEvents) {
-            seenEventIds.add(event.id);
-          }
-          return;
+        if (!reduceMotion) {
+          startPlannedPrizeTake(plannedTakeMotions);
         }
       } else {
-        for (const event of currentEvents) {
-          seenEventIds.add(event.id);
-        }
+        markEventsSeen(currentEvents);
         return;
       }
+      markEventsSeen(currentEvents);
+      return;
     }
 
     if (!initialized) {
-      for (const event of currentEvents) {
-        seenEventIds.add(event.id);
-      }
+      markEventsSeen(currentEvents);
       initialized = true;
       return;
     }
@@ -167,21 +157,25 @@
       }
       return true;
     }) : [];
-    const takeEvents = animateTakes
+    const takeEvents = animateTakes && !replayMode
       ? animationEvents.filter((event) => isPrizeTakeEvent(event) && shouldAnimateEvent(event, scopeChanged))
       : [];
 
-    for (const event of currentEvents) {
-      seenEventIds.add(event.id);
-    }
+    markEventsSeen(currentEvents);
 
     if (placementEvents.length) {
       startPlacement(placementEvents);
     }
     if (takeEvents.length) {
-      startPrizeTake(takeEvents, animationEvents, { skipCentralDestinationClaims: plannedTakeMotions.length > 0 });
+      startPrizeTake(takeEvents, animationEvents);
     }
   });
+
+  function markEventsSeen(currentEvents: ActionTimelineEvent[]) {
+    for (const event of currentEvents) {
+      seenEventIds.add(event.id);
+    }
+  }
 
   function prizeTakePlanMotions(plan: ReplayAnimationPhasePlan | undefined): CardMoveAnimationMotion[] {
     return (plan?.motions ?? []).filter((motion): motion is CardMoveAnimationMotion =>
@@ -254,7 +248,6 @@
   function startPrizeTake(
     takeEvents: ActionTimelineEvent[],
     animationEvents: ActionTimelineEvent[],
-    hideOptions: DestinationHideOptions = {},
   ) {
     if (reduceMotion) {
       return;
@@ -280,7 +273,7 @@
     const hiddenTargets = sprites
       .map((sprite) => sprite.targetElement)
       .filter((target): target is HTMLElement => target instanceof HTMLElement);
-    const hiddenPrizeTargets = hideTargets(hiddenTargets, hideOptions);
+    const hiddenPrizeTargets = hideTargets(hiddenTargets);
 
     const animation: PrizeTakeAnimation = {
       id: nextAnimationId++,
@@ -546,12 +539,9 @@
     activeTargets = [...nextActiveTargets];
   }
 
-  function hideTargets(targets: HTMLElement[], options: DestinationHideOptions = {}) {
+  function hideTargets(targets: HTMLElement[]) {
     const hidden: HiddenPrizeTarget[] = [];
     for (const target of targets) {
-      if (shouldSkipLocalDestinationClaim(target, options)) {
-        continue;
-      }
       hidden.push(hideElementForAnimation({
         element: target,
         scopeKey,
@@ -561,18 +551,6 @@
     }
     hiddenTargets = [...hiddenTargets, ...hidden];
     return hidden;
-  }
-
-  function shouldSkipLocalDestinationClaim(element: HTMLElement, options: DestinationHideOptions): boolean {
-    return !!options.skipCentralDestinationClaims && centralDestinationClaimOwns(element);
-  }
-
-  function centralDestinationClaimOwns(element: HTMLElement): boolean {
-    return centralVisibilityClaimOwnsElement({
-      element,
-      role: 'destination',
-      claims: animationPlan?.visibilityClaims,
-    });
   }
 
   function showTargets(targets: HiddenPrizeTarget[]) {

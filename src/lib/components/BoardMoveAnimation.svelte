@@ -132,27 +132,35 @@
       if (!reduceMotion) {
         startPlannedBoardMoves(plannedMotions);
       }
+      markEventsSeen(currentEvents);
       return;
     }
 
     if (!initialized) {
-      for (const event of currentEvents) {
-        seenEventIds.add(event.id);
-      }
+      markEventsSeen(currentEvents);
       initialized = true;
       return;
     }
 
-    const animationEvents = actionAnimationBatchEvents(currentEvents, seenEventIds, replayMode, scopeChanged);
-    for (const event of currentEvents) {
-      seenEventIds.add(event.id);
+    if (replayMode) {
+      markEventsSeen(currentEvents);
+      return;
     }
+
+    const animationEvents = actionAnimationBatchEvents(currentEvents, seenEventIds, replayMode, scopeChanged);
+    markEventsSeen(currentEvents);
     if (!animationEvents.length || reduceMotion) {
       return;
     }
 
     startBoardMoves(animationEvents);
   });
+
+  function markEventsSeen(currentEvents: ActionTimelineEvent[]) {
+    for (const event of currentEvents) {
+      seenEventIds.add(event.id);
+    }
+  }
 
   function currentPlanKey(plan: ReplayAnimationPhasePlan | undefined) {
     return plan ? `${plan.key}:${plan.motions.map((motion) => motion.id).join(',')}` : '';

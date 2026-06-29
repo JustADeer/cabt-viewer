@@ -2,7 +2,6 @@
   import { cardBackCssVar, cardFaceImageUrl } from '../game/cardAssets';
   import { onDestroy } from 'svelte';
   import {
-    centralVisibilityClaimOwnsElement,
     hideElementForAnimation,
     releaseElementVisibilityClaim,
     type ElementVisibilityClaim,
@@ -57,7 +56,6 @@
   };
 
   type DestinationHideOptions = {
-    skipCentralDestinationClaims?: boolean;
     disableLocalDestinationClaims?: boolean;
   };
 
@@ -136,6 +134,16 @@
         seenEventIds.add(event.id);
       }
       initialized = true;
+      return;
+    }
+
+    if (replayMode) {
+      if (scopeChanged) {
+        clearReveals();
+      }
+      for (const event of currentEvents) {
+        seenEventIds.add(event.id);
+      }
       return;
     }
 
@@ -1009,17 +1017,8 @@
     return hidden;
   }
 
-  function shouldSkipLocalDestinationClaim(element: HTMLElement, options: DestinationHideOptions): boolean {
-    return !!options.disableLocalDestinationClaims
-      || (!!options.skipCentralDestinationClaims && centralDestinationClaimOwns(element));
-  }
-
-  function centralDestinationClaimOwns(element: HTMLElement): boolean {
-    return centralVisibilityClaimOwnsElement({
-      element,
-      role: 'destination',
-      claims: animationPlan?.visibilityClaims,
-    });
+  function shouldSkipLocalDestinationClaim(_element: HTMLElement, options: DestinationHideOptions): boolean {
+    return !!options.disableLocalDestinationClaims;
   }
 
   function showTargets(targets: HiddenRevealTarget[]) {
