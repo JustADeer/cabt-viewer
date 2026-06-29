@@ -4299,4 +4299,86 @@ describe('cabtReplayToSnapshot', () => {
       },
     ]);
   });
+
+  it('plans an ordinary hand energy attach to the attached-card anchor', () => {
+    const snapshot = cabtReplayToSnapshot({
+      visualize: [{
+        current: {
+          turn: 2,
+          yourIndex: 0,
+          result: -1,
+          players: [{
+            active: [{ id: 722, serial: 6, hp: 70, maxHp: 70 }],
+            bench: [],
+            benchMax: 5,
+            hand: [{ id: 3, serial: 70 }],
+            deckCount: 50,
+            prize: [],
+          }, {
+            active: [],
+            bench: [],
+            benchMax: 5,
+            handCount: 0,
+            deckCount: 50,
+            prize: [],
+          }],
+        },
+      }, {
+        logs: [
+          { type: 'Attach', playerIndex: 0, cardId: 3, serial: 70, cardIdTarget: 722, serialTarget: 6 },
+        ],
+        current: {
+          turn: 2,
+          yourIndex: 0,
+          result: -1,
+          players: [{
+            active: [{ id: 722, serial: 6, hp: 70, maxHp: 70, energyCards: [{ id: 3, serial: 70 }] }],
+            bench: [],
+            benchMax: 5,
+            hand: [],
+            deckCount: 50,
+            prize: [],
+          }, {
+            active: [],
+            bench: [],
+            benchMax: 5,
+            handCount: 0,
+            deckCount: 50,
+            prize: [],
+          }],
+        },
+      }],
+    });
+
+    const step = snapshot.steps[1];
+    expect(step.animationPhases?.map((phase) => phase.key)).toEqual(['Attach:0']);
+    expect(step.animationPhases?.[0].view.players[0].hand.map((card) => card.serial)).toEqual([70]);
+    expect(step.animationPhases?.[0].view.players[0].active.energy.map((card) => card.serial)).toEqual([70]);
+    expect(step.animationPhases?.[0].animationPlan?.motions).toMatchObject([
+      {
+        kind: 'card-move',
+        coordinateSpace: 'viewport',
+        sourceAnchor: { kind: 'hand-card', playerIndex: 0, handIndex: 0, serial: 70 },
+        targetAnchor: { kind: 'attached-energy', playerIndex: 0, slot: 'active', slotIndex: 0, serial: 70 },
+        identity: { kind: 'energy', serial: 70, cardId: 3 },
+        handoffPolicy: {
+          hideSourceUntil: 'scope-exit',
+          hideDestinationUntil: 'arrival',
+          removeSprite: 'arrival',
+        },
+      },
+    ]);
+    expect(step.animationPhases?.[0].animationPlan?.visibilityClaims).toMatchObject([
+      {
+        anchor: { kind: 'hand-card', playerIndex: 0, handIndex: 0, serial: 70 },
+        identity: { kind: 'energy', serial: 70, cardId: 3 },
+        role: 'source',
+      },
+      {
+        anchor: { kind: 'attached-energy', playerIndex: 0, slot: 'active', slotIndex: 0, serial: 70 },
+        identity: { kind: 'energy', serial: 70, cardId: 3 },
+        role: 'destination',
+      },
+    ]);
+  });
 });

@@ -255,6 +255,27 @@
       return [];
     }
 
+    const spriteCard = motion.spriteVisual.kind === 'card' && motion.spriteVisual.card
+      ? motion.spriteVisual.card
+      : undefined;
+    const metadataCard = motion.identity?.cardId !== undefined
+        ? cabtCardToView(motion.identity.cardId)
+        : undefined;
+    const attachTarget = slotAttachTargetForMotion(motion, target);
+    if (attachTarget) {
+      const attachRect = attachTarget.getBoundingClientRect();
+      if (attachRect.width <= 0 || attachRect.height <= 0) {
+        return [];
+      }
+      return [slotAttachAnimationForEvent(
+        attachTarget,
+        sourceRect,
+        attachRect,
+        cardFaceImageUrl(spriteCard ?? metadataCard) ?? '',
+        motion.startMs,
+      )];
+    }
+
     const sourceQuad = sourceQuadForHand(handElement, sourceRect);
     const targetQuad = viewportQuad(visualTarget);
     const startTransform = cssMatrix3dForQuad(sourceRect.width, sourceRect.height, sourceQuad);
@@ -263,12 +284,6 @@
       return [];
     }
 
-    const spriteCard = motion.spriteVisual.kind === 'card' && motion.spriteVisual.card
-      ? motion.spriteVisual.card
-      : undefined;
-    const metadataCard = motion.identity?.cardId !== undefined
-        ? cabtCardToView(motion.identity.cardId)
-        : undefined;
     const label = spriteCard?.name ?? metadataCard?.name ?? motion.identity?.name ?? 'Card';
     return [{
       kind: 'fixed',
@@ -290,6 +305,19 @@
           : 'pokemon',
       hideContents: false,
     }];
+  }
+
+  function slotAttachTargetForMotion(motion: CardMoveAnimationMotion, target: HTMLElement): HTMLElement | null {
+    if (
+      motion.targetAnchor.kind !== 'attached-energy'
+      && motion.targetAnchor.kind !== 'attached-tool'
+      && motion.identity?.kind !== 'energy'
+      && motion.identity?.kind !== 'tool'
+    ) {
+      return null;
+    }
+    const slot = target.closest('.board-slot');
+    return slot instanceof HTMLElement ? slot : null;
   }
 
   function targetElementForMotion(motion: CardMoveAnimationMotion): HTMLElement | null {

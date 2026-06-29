@@ -1466,12 +1466,17 @@ function animationPhaseMotions(
   if (phase.key.startsWith('Play:') || phase.key.startsWith('HandMove:')) {
     return handPlayCardMoveMotions(phase, view);
   }
+  if (phase.key.startsWith('Attach:')) {
+    return [
+      ...handPlayCardMoveMotions(phase, view),
+      ...revealSessionMotions(phase, view, stepEvents),
+    ];
+  }
   if (
     phase.key.startsWith('DeckReveal:')
     || phase.key.startsWith('DeckSearchReveal:')
     || phase.key.startsWith('DeckRevealReturn:')
     || phase.key.startsWith('DeckRevealTake:')
-    || phase.key.startsWith('Attach:')
   ) {
     return revealSessionMotions(phase, view, stepEvents);
   }
@@ -1649,7 +1654,7 @@ function handToDeckCardMoveMotionForEvent(
   const playerIndex = event.playerIndex;
   const sourceAnchor = handDestinationAnchorForEvent(view, event);
   if (playerIndex === undefined || !sourceAnchor) {
-    return null;
+    return undefined;
   }
   const params = event.params as Record<string, unknown> | undefined;
   const sourceCard = view.players[playerIndex]?.hand[sourceAnchor.kind === 'hand-card' ? sourceAnchor.handIndex ?? -1 : -1];
@@ -1776,6 +1781,10 @@ function handPlayTargetAnchorForEvent(view: GameView, event: ActionTimelineEvent
     return attachedSourceAnchorForEvent(view.players[playerIndex], event, CabtAreaType.TOOL)
       ?? attachedSourceAnchorForEvent(view.players[playerIndex], event, CabtAreaType.ENERGY);
   }
+  if (event.kind === 'Attach') {
+    return attachedSourceAnchorForEvent(view.players[playerIndex], event, CabtAreaType.ENERGY)
+      ?? attachedSourceAnchorForEvent(view.players[playerIndex], event, CabtAreaType.TOOL);
+  }
   if (!isMoveCardKind(event.kind)) {
     return undefined;
   }
@@ -1814,6 +1823,9 @@ function handPlayIdentityKind(event: ActionTimelineEvent): AnimationIdentity['ki
   }
   if (event.kind === 'Play' && cardId !== undefined && cardDatabase.get(cardId)?.kind === 'Tool') {
     return 'tool';
+  }
+  if (event.kind === 'Attach' && cardId !== undefined) {
+    return cardDatabase.get(cardId)?.kind === 'Tool' ? 'tool' : 'energy';
   }
   return 'card';
 }
@@ -2366,7 +2378,7 @@ function stringValue(value: unknown): string | undefined {
 }
 
 function animationPhaseVisibilityClaims(phase: AnimationEventPhase, view: GameView): AnimationVisibilityClaim[] {
-  if (phase.key.startsWith('Play:') || phase.key.startsWith('HandMove:')) {
+  if (phase.key.startsWith('Play:') || phase.key.startsWith('HandMove:') || phase.key.startsWith('Attach:')) {
     return handPlayDestinationVisibilityClaims(phase, view);
   }
   if (phase.key.startsWith('Draw:')) {
@@ -2798,6 +2810,7 @@ function animationPhaseUsesSourceView(key: string): boolean {
   return key.startsWith('HandToDeck:')
     || key.startsWith('Play:')
     || key.startsWith('HandMove:')
+    || key.startsWith('Attach:')
     || key.startsWith('Evolve:')
     || key.startsWith('Ability:')
     || key.startsWith('Attack:')
@@ -2827,6 +2840,7 @@ function animationPhaseMayHavePlan(phase: AnimationEventPhase): boolean {
   return phase.key.startsWith('HandToDeck:')
     || phase.key.startsWith('Play:')
     || phase.key.startsWith('HandMove:')
+    || phase.key.startsWith('Attach:')
     || phase.key.startsWith('Draw:')
     || phase.key.startsWith('DeckDiscard:')
     || phase.key.startsWith('DeckBoardPlace:')
@@ -2876,7 +2890,7 @@ function animationSourceViewForPhase(
   if (phase.key.startsWith('PrizeTake:')) {
     return prizeTakeSourceView(phaseStartView, currentView, phase);
   }
-  if (phase.key.startsWith('Play:') || phase.key.startsWith('HandMove:')) {
+  if (phase.key.startsWith('Play:') || phase.key.startsWith('HandMove:') || phase.key.startsWith('Attach:')) {
     return handPlaySourceView(phaseStartView, currentView, phase);
   }
   return phaseStartView;
@@ -2887,15 +2901,17 @@ function handPlaySourceView(
   currentView: GameView,
   phase: AnimationEventPhase,
 ): GameView {
-  const plannedEvents = phase.events.filter(isPlannedHandPlayMoveEvent);
-  const usesFinalDestination = plannedEvents.some((event) => isMoveCardKind(event.kind));
+  const plannedEvents = phase.events
+    .filter(isPlannedHandPlayMoveEvent)
+    .filter((event) => handDestinationAnchorForEvent(phaseStartView, event));
+  const usesFinalDestination = plannedEvents.some((event) => isMoveCardKind(event.kind) || event.kind === 'Attach');
   const phaseView = usesFinalDestination ? currentView : phaseStartView;
   const playerIndexes = new Set(
     plannedEvents.map((event) => event.playerIndex)
       .filter((playerIndex): playerIndex is number => playerIndex !== undefined),
   );
   if (!playerIndexes.size) {
-    return phaseView;
+    return projectedViewForEvents(phaseStartView, currentView, phase.events);
   }
   return {
     ...phaseView,
@@ -3572,6 +3588,11 @@ function isPlannedHandPlayMoveEvent(event: ActionTimelineEvent): boolean {
   }
   if (event.kind === 'Play') {
     return finiteNumber((event.params as Record<string, unknown> | undefined)?.cardId) !== undefined;
+  }
+  if (event.kind === 'Attach') {
+    const params = event.params as Record<string, unknown> | undefined;
+    return finiteNumber(params?.serial) !== undefined
+      && finiteNumber(params?.cardId) !== undefined;
   }
   if (!isMoveCardKind(event.kind)) {
     return false;
