@@ -10,6 +10,9 @@
 - Replay animations must be replayable. If a user scrubs away from a step and returns, the same phase should animate again. Use per-scope de-duping only to suppress duplicate work during the current render/phase, and clear it when the replay scope changes.
 - Prefer phase-scoped action timelines for phase-owned animations. A replay step can contain several logical phases, and using the whole step timeline from a component that should animate one phase can cause skipped source states or duplicate animation.
 - Guard replay phase timers against stale callbacks. A timer created for one step/phase must not advance a later step after the user scrubs.
+- Migrated replay paths should have one owner for moving card visuals. Use central source/destination visibility claims for the phase; do not add component-local hidden maps, hidden attributes, or timer cleanup systems for those paths.
+- Keep source cards in the phase view while a motion owns them, and hide them through visibility claims until handoff. Do not project the source away and then rebuild it with local snapshots unless the source truly is absent from the final replay state.
+- Evolve animations should target the board slot/Pokemon stack, not a hand-style viewport target. Hide the moving evolution card as needed, but do not hide the pre-evolution destination stack; it should remain the visible landing context.
 
 ## Board-Origin Cards
 

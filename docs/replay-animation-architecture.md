@@ -146,6 +146,21 @@ Renderers only render sprites and effects:
 
 Avoid turning this into a single large component that owns every visual detail.
 
+Implementation guardrails:
+
+- Each moving card visual has one owner for the whole phase.
+- Source and destination DOM visibility is controlled by central claims, not by
+  component-local hidden maps, ad hoc `data-*` flags, or timers on migrated
+  paths.
+- Phase views should retain source cards while they are claimed hidden. Do not
+  remove a source from the projected view and then reconstruct it locally unless
+  the real replay state has no source card to keep.
+- Board-to-board motion stays in the board coordinate frame. Use viewport or
+  cross-plane motion only when a card actually moves between UI planes.
+- Evolve targets the board slot/Pokemon stack. Keep the pre-evolution stack
+  visible as the destination context; do not hide it like the incoming evolution
+  card.
+
 ### Reveal/Search Sessions
 
 Model deck search and reveal flows as a session, not as a generic card fan.
