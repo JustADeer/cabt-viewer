@@ -372,7 +372,7 @@
         return face instanceof HTMLElement ? face : pile;
       }
     }
-    if (anchor.kind === 'discard-card') {
+    if (anchor.kind === 'discard-card' || anchor.kind === 'play-zone-card') {
       const card = element.classList.contains('card-tile') ? element : element.querySelector('.card-tile');
       return card instanceof HTMLElement ? card : element;
     }

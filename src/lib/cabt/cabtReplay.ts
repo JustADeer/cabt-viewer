@@ -5,6 +5,7 @@ import { cabtLogsToTimeline } from './logFormat';
 import { CabtAreaType, CabtOptionType, CabtSelectContext } from './types';
 import {
   createReplayAnimationPhasePlan,
+  replayAnimationMotionSpanMs,
   type AnimationAnchorRef,
   type AnimationIdentity,
   type AnimationMotion,
@@ -3295,6 +3296,8 @@ type ResolvingPlayedCard = {
   card: CardView;
 };
 
+const resolvingDiscardHandoffGapMs = 24;
+
 function applyResolvingPlayedCards(steps: ReplayStep[], views: GameView[]): void {
   let resolving: ResolvingPlayedCard[] = [];
 
@@ -3325,13 +3328,21 @@ function applyResolvingPlayedCards(steps: ReplayStep[], views: GameView[]): void
       step.displayView = gameViewWithResolvingCards(view, displayResolving);
     }
     if (phaseResolving.length && step.animationPhases?.length) {
-      step.animationPhases = step.animationPhases.map((phase) => {
-        const view = gameViewWithResolvingCards(phase.view, phaseResolving);
-        return {
+      const lastPhaseIndex = step.animationPhases.length - 1;
+      step.animationPhases = step.animationPhases.map((phase, phaseIndex) => {
+        const resolvedInPhase = phaseIndex === lastPhaseIndex ? displayResolved : [];
+        const viewWithResolving = gameViewWithResolvingCards(phase.view, phaseResolving);
+        const view = resolvedInPhase.length
+          ? gameViewWithResolvingDiscardDestinations(viewWithResolving, resolvedInPhase)
+          : viewWithResolving;
+        const nextPhase = {
           ...phase,
           view,
           animationPlan: phase.animationPlan ? { ...phase.animationPlan, view } : undefined,
         };
+        return resolvedInPhase.length
+          ? replayPhaseWithResolvingDiscardAnimation(nextPhase, resolvedInPhase)
+          : nextPhase;
       });
     }
 
@@ -3471,6 +3482,119 @@ function gameViewWithResolvedDiscards(view: GameView, resolving: ResolvingPlayed
       };
     }),
   };
+}
+
+function gameViewWithResolvingDiscardDestinations(view: GameView, resolving: ResolvingPlayedCard[]): GameView {
+  const cardsByPlayer = new Map<number, CardView[]>();
+  for (const entry of resolving) {
+    const cards = cardsByPlayer.get(entry.playerIndex) ?? [];
+    cardsByPlayer.set(entry.playerIndex, [...cards, entry.card]);
+  }
+
+  return {
+    ...view,
+    players: view.players.map((player, playerIndex) => {
+      const resolvedCards = cardsByPlayer.get(playerIndex) ?? [];
+      if (!resolvedCards.length) {
+        return player;
+      }
+      return {
+        ...player,
+        discard: [
+          ...player.discard.filter((discardCard) => !resolvedCards.some((card) => sameKnownCard(discardCard, card))),
+          ...resolvedCards,
+        ],
+      };
+    }),
+  };
+}
+
+function replayPhaseWithResolvingDiscardAnimation(
+  phase: ReplayAnimationPhase,
+  resolving: ResolvingPlayedCard[],
+): ReplayAnimationPhase {
+  const existingPlan = phase.animationPlan;
+  const existingMotions = existingPlan?.motions ?? [];
+  const startBaseMs = Math.max(phase.durationMs, replayAnimationMotionSpanMs(existingMotions)) + resolvingDiscardHandoffGapMs;
+  const motions = resolving.map((entry, index) =>
+    resolvingDiscardCardMoveMotion(phase, entry, startBaseMs + index * actionAnimationTiming.handMoveStepMs));
+  const durationMs = Math.max(phase.durationMs, replayAnimationMotionSpanMs([...existingMotions, ...motions]));
+  const visibilityClaims = [
+    ...(existingPlan?.visibilityClaims ?? []),
+    ...motions.flatMap((motion) => cardMoveVisibilityClaims(phase.key, motion)),
+  ];
+  return {
+    ...phase,
+    durationMs,
+    animationPlan: createReplayAnimationPhasePlan({
+      key: existingPlan?.key ?? phase.key,
+      label: existingPlan?.label ?? phase.label,
+      view: phase.view,
+      actionTimeline: existingPlan?.actionTimeline ?? phase.actionTimeline,
+      durationMs,
+      motions: [...existingMotions, ...motions],
+      visibilityClaims,
+    }),
+  };
+}
+
+function resolvingDiscardCardMoveMotion(
+  phase: ReplayAnimationPhase,
+  entry: ResolvingPlayedCard,
+  startMs: number,
+): AnimationMotion {
+  const serial = entry.card.serial;
+  const cardId = entry.card.id;
+  const sourceAnchor: AnimationAnchorRef = { kind: 'play-zone-card', playerIndex: entry.playerIndex, serial };
+  return {
+    id: `${phase.key}:resolving-discard:${entry.playerIndex}:${serial ?? cardId ?? 'unknown'}`,
+    kind: 'card-move',
+    identity: {
+      kind: 'card',
+      serial,
+      cardId,
+      name: entry.card.name,
+    },
+    sourceAnchor,
+    targetAnchor: { kind: 'discard-card', playerIndex: entry.playerIndex, serial },
+    coordinateSpace: 'board',
+    startMs,
+    durationMs: actionAnimationTiming.boardMoveMs,
+    spriteVisual: {
+      kind: 'anchor-snapshot',
+      anchor: sourceAnchor,
+    },
+    handoffPolicy: {
+      hideSourceUntil: 'scope-exit',
+      hideDestinationUntil: 'prepaint',
+      removeSprite: 'prepaint',
+      prepaintFrames: 2,
+    },
+  };
+}
+
+function cardMoveVisibilityClaims(scopeKey: string, motion: AnimationMotion): AnimationVisibilityClaim[] {
+  if (motion.kind !== 'card-move') {
+    return [];
+  }
+  const claims: AnimationVisibilityClaim[] = [];
+  if (motion.handoffPolicy.hideSourceUntil !== 'none' && motion.sourceAnchor.kind !== 'deck-top') {
+    claims.push({
+      scopeKey,
+      anchor: motion.sourceAnchor,
+      identity: motion.identity,
+      role: 'source',
+    });
+  }
+  if (motion.handoffPolicy.hideDestinationUntil !== 'none') {
+    claims.push({
+      scopeKey,
+      anchor: motion.targetAnchor,
+      identity: motion.identity,
+      role: 'destination',
+    });
+  }
+  return claims;
 }
 
 function shouldResolveCardInDisplay(step: ReplayStep, entry: ResolvingPlayedCard): boolean {
