@@ -1592,8 +1592,8 @@ function prizeTakeCardMoveMotionForEvent(
     },
     handoffPolicy: {
       hideSourceUntil: 'none',
-      hideDestinationUntil: 'prepaint',
-      removeSprite: 'prepaint',
+      hideDestinationUntil: 'arrival',
+      removeSprite: 'arrival',
       prepaintFrames: 2,
     },
   };

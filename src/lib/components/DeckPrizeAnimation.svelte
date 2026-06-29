@@ -6,7 +6,12 @@
     releaseElementVisibilityClaim,
     type ElementVisibilityClaim,
   } from '../animations/animationVisibilityClaims';
-  import { resolveAnimationAnchorElements } from '../animations/animationAnchors';
+  import {
+    animationAnchorForElement,
+    resolveAnimationAnchorElements,
+    serializeAnimationAnchor,
+    type AnimationIdentity,
+  } from '../animations/animationAnchors';
   import type { CardMoveAnimationMotion, ReplayAnimationPhasePlan } from '../animations/replayAnimationPlan';
   import { actionAnimationBatchEvents, actionAnimationStartMs, actionAnimationTiming } from '../cabt/actionAnimationSchedule';
   import { cabtCardToView } from '../cabt/cardView';
@@ -53,6 +58,7 @@
     takeRotation: number;
     takeFlip: number;
     rotation: number;
+    durationMs: number;
     targetElement?: HTMLElement;
   };
 
@@ -63,6 +69,10 @@
   };
 
   type HiddenPrizeTarget = ElementVisibilityClaim;
+
+  type DestinationHideOptions = {
+    skipCentralDestinationClaims?: boolean;
+  };
 
   let {
     events = [],
@@ -171,7 +181,7 @@
       startPlacement(placementEvents);
     }
     if (takeEvents.length) {
-      startPrizeTake(takeEvents, animationEvents);
+      startPrizeTake(takeEvents, animationEvents, { skipCentralDestinationClaims: plannedTakeMotions.length > 0 });
     }
   });
 
@@ -243,7 +253,11 @@
     timers.push(timer);
   }
 
-  function startPrizeTake(takeEvents: ActionTimelineEvent[], animationEvents: ActionTimelineEvent[]) {
+  function startPrizeTake(
+    takeEvents: ActionTimelineEvent[],
+    animationEvents: ActionTimelineEvent[],
+    hideOptions: DestinationHideOptions = {},
+  ) {
     if (reduceMotion) {
       return;
     }
@@ -268,7 +282,7 @@
     const hiddenTargets = sprites
       .map((sprite) => sprite.targetElement)
       .filter((target): target is HTMLElement => target instanceof HTMLElement);
-    const hiddenPrizeTargets = hideTargets(hiddenTargets);
+    const hiddenPrizeTargets = hideTargets(hiddenTargets, hideOptions);
 
     const animation: PrizeTakeAnimation = {
       id: nextAnimationId++,
@@ -299,7 +313,7 @@
 
     const timer = setTimeout(() => {
       prizeTakes = prizeTakes.filter((item) => item.id !== animation.id);
-    }, Math.max(...sprites.map((sprite) => sprite.delayMs + prizeTakeDurationMs(sprite))) + 20);
+    }, Math.max(...sprites.map((sprite) => sprite.delayMs + sprite.durationMs)) + 24);
     timers.push(timer);
     return true;
   }
@@ -413,6 +427,7 @@
         takeRotation: handConcealed ? 180 : 0,
         takeFlip: handConcealed ? 0 : 180,
         rotation: revealTarget.rotation,
+        durationMs: reveal ? actionAnimationTiming.prizeTakeMs : directTakeDurationMs,
         targetElement,
       }];
     });
@@ -459,6 +474,7 @@
       takeRotation: handConcealed ? 180 : 0,
       takeFlip: handConcealed ? 0 : 180,
       rotation: revealTarget.rotation,
+      durationMs: motion.durationMs,
       targetElement,
     };
   }
@@ -532,9 +548,12 @@
     activeTargets = [...nextActiveTargets];
   }
 
-  function hideTargets(targets: HTMLElement[]) {
+  function hideTargets(targets: HTMLElement[], options: DestinationHideOptions = {}) {
     const hidden: HiddenPrizeTarget[] = [];
     for (const target of targets) {
+      if (shouldSkipLocalDestinationClaim(target, options)) {
+        continue;
+      }
       hidden.push(hideElementForAnimation({
         element: target,
         scopeKey,
@@ -544,6 +563,42 @@
     }
     hiddenTargets = [...hiddenTargets, ...hidden];
     return hidden;
+  }
+
+  function shouldSkipLocalDestinationClaim(element: HTMLElement, options: DestinationHideOptions): boolean {
+    return !!options.skipCentralDestinationClaims && centralDestinationClaimOwns(element);
+  }
+
+  function centralDestinationClaimOwns(element: HTMLElement): boolean {
+    const anchoredElement = animationAnchorForElement(element);
+    const anchorKey = anchoredElement ? serializeAnimationAnchor(anchoredElement.anchor) : undefined;
+    if (!anchorKey) {
+      return false;
+    }
+    return !!animationPlan?.visibilityClaims.some((claim) =>
+      claim.role === 'destination'
+      && serializeAnimationAnchor(claim.anchor) === anchorKey
+      && animationIdentityMatchesClaim(anchoredElement.identity, claim.identity),
+    );
+  }
+
+  function animationIdentityMatchesClaim(
+    elementIdentity: AnimationIdentity | undefined,
+    claimIdentity: AnimationIdentity | undefined,
+  ): boolean {
+    if (!elementIdentity || !claimIdentity) {
+      return true;
+    }
+    if (elementIdentity.serial !== undefined && claimIdentity.serial !== undefined) {
+      return elementIdentity.serial === claimIdentity.serial;
+    }
+    if (elementIdentity.cardId !== undefined && claimIdentity.cardId !== undefined) {
+      return elementIdentity.cardId === claimIdentity.cardId;
+    }
+    if (elementIdentity.name && claimIdentity.name) {
+      return elementIdentity.name === claimIdentity.name;
+    }
+    return true;
   }
 
   function showTargets(targets: HiddenPrizeTarget[]) {
@@ -771,6 +826,7 @@
       `--prize-reveal-rotation: ${sprite.rotation.toFixed(1)}deg`,
       '--prize-overlay-z: 0px',
       `--prize-take-delay: ${sprite.delayMs}ms`,
+      `--prize-take-duration: ${sprite.durationMs}ms`,
       `z-index: ${sprite.order}`,
     ].join('; ');
   }
@@ -857,11 +913,11 @@
   }
 
   .prize-take-card.revealing {
-    animation: prize-take-reveal 1180ms cubic-bezier(0.18, 0.86, 0.24, 1) var(--prize-take-delay) both;
+    animation: prize-take-reveal var(--prize-take-duration, 1180ms) cubic-bezier(0.18, 0.86, 0.24, 1) var(--prize-take-delay) both;
   }
 
   .prize-take-card.direct {
-    animation: prize-take-direct 520ms cubic-bezier(0.2, 0.82, 0.22, 1) var(--prize-take-delay) both;
+    animation: prize-take-direct var(--prize-take-duration, 520ms) cubic-bezier(0.2, 0.82, 0.22, 1) var(--prize-take-delay) both;
   }
 
   .prize-take-card-inner {
@@ -874,7 +930,7 @@
   }
 
   .prize-take-card.revealed .prize-take-card-inner {
-    animation: prize-take-flip 1180ms ease-in-out var(--prize-take-delay) both;
+    animation: prize-take-flip var(--prize-take-duration, 1180ms) ease-in-out var(--prize-take-delay) both;
   }
 
   .prize-take-card-face {

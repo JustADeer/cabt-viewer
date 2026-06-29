@@ -533,8 +533,8 @@ describe('cabtReplayToSnapshot', () => {
         startMs: 0,
         durationMs: 1180,
         handoffPolicy: {
-          hideDestinationUntil: 'prepaint',
-          removeSprite: 'prepaint',
+          hideDestinationUntil: 'arrival',
+          removeSprite: 'arrival',
         },
       },
       {
@@ -622,6 +622,10 @@ describe('cabtReplayToSnapshot', () => {
         spriteVisual: {
           kind: 'card',
           faceDown: true,
+        },
+        handoffPolicy: {
+          hideDestinationUntil: 'arrival',
+          removeSprite: 'arrival',
         },
       },
     ]);
