@@ -2049,6 +2049,23 @@ describe('cabtReplayToSnapshot', () => {
     ]);
     expect(step.animationPhases?.[0].view.players[0].bench[0].pokemon?.serial).toBe(6);
     expect(step.animationPhases?.[0].view.players[0].bench[0].pokemon).not.toHaveProperty('animationHidden');
+    expect(step.animationPhases?.[0].animationPlan?.visibilityClaims).toEqual([
+      expect.objectContaining({
+        role: 'destination',
+        anchor: {
+          kind: 'pokemon-card',
+          playerIndex: 0,
+          slot: 'bench',
+          slotIndex: 0,
+          serial: 6,
+        },
+        identity: expect.objectContaining({
+          kind: 'pokemon',
+          serial: 6,
+          cardId: 722,
+        }),
+      }),
+    ]);
     expect(step.animationPhases?.[0].view.players[0].deckCount).toBe(49);
     expect(step.animationPhases?.[1].view.players[0].bench[0].pokemon?.serial).toBe(6);
     expect(step.animationPhases?.[1].view.players[0].bench[0].pokemon).not.toHaveProperty('animationHidden');
@@ -2479,6 +2496,21 @@ describe('cabtReplayToSnapshot', () => {
     expect(step.animationPhases?.[2].view.players[1].hand.map((card) => card.serial)).toEqual([]);
     expect(step.animationPhases?.[3].view.players[1].hand.map((card) => card.serial)).toEqual([117]);
     expect(step.animationPhases?.[3].view.players[1].hand[0]).not.toHaveProperty('animationHidden');
+    expect(step.animationPhases?.[3].animationPlan?.visibilityClaims).toEqual([
+      expect.objectContaining({
+        role: 'destination',
+        anchor: {
+          kind: 'hand-card',
+          playerIndex: 1,
+          handIndex: 0,
+          serial: 117,
+        },
+        identity: expect.objectContaining({
+          kind: 'card',
+          serial: 117,
+        }),
+      }),
+    ]);
     expect(step.animationPhases?.map((phase) => phase.view.players[1].playZone.map((card) => card.serial))).toEqual([
       [99],
       [99],

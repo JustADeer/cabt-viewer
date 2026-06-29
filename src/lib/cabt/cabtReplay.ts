@@ -3,6 +3,7 @@ import attackRows from './attackData.generated.json';
 import { actionAnimationTiming } from './actionAnimationSchedule';
 import { cabtLogsToTimeline } from './logFormat';
 import { CabtAreaType, CabtOptionType, CabtSelectContext } from './types';
+import { createReplayAnimationPhasePlan, type AnimationVisibilityClaim } from '../animations/replayAnimationPlan';
 import { resolveCardImageUrl } from '../game/cardImages';
 import { SlotType, targetFor, type ActionTimelineEvent, type CardView, type GameView, type LogView, type PlayerView, type PokemonSlotView } from '../game/types';
 import type { ReplayAnimationPhase, ReplaySnapshot, ReplayStep } from '../game/replay';
@@ -1389,19 +1390,138 @@ function groupedStepAnimationPhases(
     let phaseView = phase.usesSourceView
       ? animationSourceViewForPhase(phaseStartView, currentView, phase)
       : projectedViewForEvents(phaseStartView, currentView, phase.events);
+    const label = animationPhaseLabel(phase);
+    const view = {
+      ...phaseView,
+      actionTimeline: phase.events,
+    };
     phases.push({
       key: phase.key,
-      label: animationPhaseLabel(phase),
-      view: {
-        ...phaseView,
-        actionTimeline: phase.events,
-      },
+      label,
+      view,
       actionTimeline: phase.events,
       durationMs: phase.durationMs,
+      animationPlan: replayAnimationPlanForPhase(phase, view, label),
     });
     phaseStartView = projectedViewForEvents(phaseStartView, currentView, phase.events);
   }
   return phases;
+}
+
+function replayAnimationPlanForPhase(
+  phase: AnimationEventPhase,
+  view: GameView,
+  label: string | undefined,
+) {
+  const visibilityClaims = animationPhaseVisibilityClaims(phase, view);
+  if (!visibilityClaims.length) {
+    return undefined;
+  }
+  return createReplayAnimationPhasePlan({
+    key: phase.key,
+    label,
+    view,
+    actionTimeline: phase.events,
+    durationMs: phase.durationMs,
+    visibilityClaims,
+  });
+}
+
+function animationPhaseVisibilityClaims(phase: AnimationEventPhase, view: GameView): AnimationVisibilityClaim[] {
+  if (phase.key.startsWith('DeckBoardPlace:')) {
+    return boardPlaceDestinationVisibilityClaims(phase, view);
+  }
+  if (phase.key.startsWith('DeckRevealTake:')) {
+    return handTakeDestinationVisibilityClaims(phase, view);
+  }
+  return [];
+}
+
+function boardPlaceDestinationVisibilityClaims(phase: AnimationEventPhase, view: GameView): AnimationVisibilityClaim[] {
+  const claims: AnimationVisibilityClaim[] = [];
+  for (const event of phase.events) {
+    const params = event.params as Record<string, unknown> | undefined;
+    const playerIndex = event.playerIndex;
+    const toArea = Number(params?.toArea);
+    if (playerIndex === undefined || !isMoveCardKind(event.kind) || (toArea !== CabtAreaType.ACTIVE && toArea !== CabtAreaType.BENCH)) {
+      continue;
+    }
+    const destination = boardPokemonDestinationForEvent(view.players[playerIndex], event);
+    if (!destination?.slot.pokemon) {
+      continue;
+    }
+    claims.push({
+      scopeKey: phase.key,
+      anchor: {
+        kind: 'pokemon-card',
+        playerIndex,
+        slot: destination.kind,
+        slotIndex: destination.slot.index,
+        serial: destination.slot.pokemon.serial,
+      },
+      identity: {
+        kind: 'pokemon',
+        serial: destination.slot.pokemon.serial,
+        cardId: destination.slot.pokemon.id,
+        name: destination.slot.pokemon.name,
+      },
+      role: 'destination',
+    });
+  }
+  return claims;
+}
+
+function boardPokemonDestinationForEvent(
+  player: PlayerView | undefined,
+  event: ActionTimelineEvent,
+): { kind: 'active' | 'bench'; slot: PokemonSlotView } | undefined {
+  if (!player) {
+    return undefined;
+  }
+  if (player.active.pokemon && eventCardMatches(player.active.pokemon, event)) {
+    return { kind: 'active', slot: player.active };
+  }
+  const benchSlot = player.bench.find((slot) => slot.pokemon && eventCardMatches(slot.pokemon, event));
+  return benchSlot ? { kind: 'bench', slot: benchSlot } : undefined;
+}
+
+function handTakeDestinationVisibilityClaims(phase: AnimationEventPhase, view: GameView): AnimationVisibilityClaim[] {
+  const claims: AnimationVisibilityClaim[] = [];
+  for (const event of phase.events) {
+    const params = event.params as Record<string, unknown> | undefined;
+    const playerIndex = event.playerIndex;
+    if (
+      playerIndex === undefined
+      || !isMoveCardKind(event.kind)
+      || Number(params?.fromArea) !== CabtAreaType.LOOKING
+      || Number(params?.toArea) !== CabtAreaType.HAND
+    ) {
+      continue;
+    }
+    const hand = view.players[playerIndex]?.hand ?? [];
+    const handIndex = hand.findIndex((card) => eventCardMatches(card, event));
+    const card = hand[handIndex];
+    if (handIndex < 0 || !card) {
+      continue;
+    }
+    claims.push({
+      scopeKey: phase.key,
+      anchor: {
+        kind: 'hand-card',
+        playerIndex,
+        handIndex,
+        serial: card.serial,
+      },
+      identity: {
+        kind: 'card',
+        serial: card.serial,
+        cardId: card.id,
+        name: card.name,
+      },
+      role: 'destination',
+    });
+  }
+  return claims;
 }
 
 type AnimationEventPhase = {

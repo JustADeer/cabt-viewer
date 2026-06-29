@@ -59,6 +59,7 @@
   }: Props = $props();
 
   const timers: ReturnType<typeof setTimeout>[] = [];
+  const handoffFrameIds: number[] = [];
   const cardHeightToWidthRatio = 88 / 63;
   const handoffSettleMs = 48;
   let reveals = $state<RevealAnimation[]>([]);
@@ -194,7 +195,7 @@
         if (target) {
           showTargets(hiddenSearchTargets.filter((hidden) => hidden.element === target));
         }
-        removeSprites((item) => item.id === sprite.id);
+        removeSpritesAfterPrepaint((item) => item.id === sprite.id);
       }, sprite.delayMs + revealMs + handoffSettleMs);
       timers.push(handoffTimer);
     }
@@ -267,7 +268,7 @@
         if (target.element) {
           showTargets(hiddenTakeTargets);
         }
-        removeSprites((item) => item.serial === serial);
+        removeSpritesAfterPrepaint((item) => item.serial === serial);
       }, delayMs + actionAnimationTiming.handMoveMs + handoffSettleMs);
       timers.push(timer);
     }
@@ -328,6 +329,10 @@
       clearTimeout(timer);
     }
     timers.length = 0;
+    for (const frameId of handoffFrameIds) {
+      cancelAnimationFrame(frameId);
+    }
+    handoffFrameIds.length = 0;
     clearHiddenTargets();
     reveals = [];
     clearAttachTargets();
@@ -582,6 +587,25 @@
         sprites: reveal.sprites.filter((sprite) => !predicate(sprite)),
       }))
       .filter((reveal) => reveal.sprites.length > 0);
+  }
+
+  function removeSpritesAfterPrepaint(predicate: (sprite: RevealSprite) => boolean) {
+    const firstFrameId = requestAnimationFrame(() => {
+      removeHandoffFrame(firstFrameId);
+      const secondFrameId = requestAnimationFrame(() => {
+        removeHandoffFrame(secondFrameId);
+        removeSprites(predicate);
+      });
+      handoffFrameIds.push(secondFrameId);
+    });
+    handoffFrameIds.push(firstFrameId);
+  }
+
+  function removeHandoffFrame(frameId: number) {
+    const index = handoffFrameIds.indexOf(frameId);
+    if (index >= 0) {
+      handoffFrameIds.splice(index, 1);
+    }
   }
 
   function revealSprite(serial: number): RevealSprite | undefined {

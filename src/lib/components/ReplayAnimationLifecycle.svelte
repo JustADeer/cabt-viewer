@@ -18,10 +18,13 @@
   let lastScopeKey: string | undefined;
   let lastPlan: ReplayAnimationPhasePlan | undefined;
   let planTokens: AnimationVisibilityToken[] = [];
+  let planTokenReleaseTimer: ReturnType<typeof setTimeout> | undefined;
+  const staleScopeReleaseTimers: ReturnType<typeof setTimeout>[] = [];
   let refreshGeneration = 0;
 
   onDestroy(() => {
     releasePlanTokens();
+    clearStaleScopeReleaseTimers();
     if (lastScopeKey) {
       replayAnimationVisibility.releaseScope(lastScopeKey);
       lastScopeKey = undefined;
@@ -37,6 +40,7 @@
 
     if (!currentActive) {
       releasePlanTokens();
+      clearStaleScopeReleaseTimers();
       if (lastScopeKey) {
         replayAnimationVisibility.releaseScope(lastScopeKey);
         lastScopeKey = undefined;
@@ -48,7 +52,7 @@
 
     if (scopeChanged && lastScopeKey) {
       releasePlanTokens();
-      replayAnimationVisibility.releaseScope(lastScopeKey);
+      scheduleStaleScopeRelease(lastScopeKey);
     } else if (planChanged) {
       releasePlanTokens();
     }
@@ -62,16 +66,46 @@
           ...claim,
           scopeKey: currentScopeKey,
         }));
+      const releaseMs = Math.min(currentPlan.durationMs, 240);
+      planTokenReleaseTimer = setTimeout(() => {
+        releasePlanTokens();
+        scheduleVisibilityRefresh();
+      }, releaseMs);
     }
 
     scheduleVisibilityRefresh();
   });
 
   function releasePlanTokens() {
+    if (planTokenReleaseTimer) {
+      clearTimeout(planTokenReleaseTimer);
+      planTokenReleaseTimer = undefined;
+    }
     for (const token of planTokens) {
       replayAnimationVisibility.release(token);
     }
     planTokens = [];
+  }
+
+  function scheduleStaleScopeRelease(scopeKey: string) {
+    const timer = setTimeout(() => {
+      const timerIndex = staleScopeReleaseTimers.indexOf(timer);
+      if (timerIndex >= 0) {
+        staleScopeReleaseTimers.splice(timerIndex, 1);
+      }
+      if (lastScopeKey !== scopeKey) {
+        replayAnimationVisibility.releaseScope(scopeKey);
+        scheduleVisibilityRefresh();
+      }
+    }, 220);
+    staleScopeReleaseTimers.push(timer);
+  }
+
+  function clearStaleScopeReleaseTimers() {
+    for (const timer of staleScopeReleaseTimers) {
+      clearTimeout(timer);
+    }
+    staleScopeReleaseTimers.length = 0;
   }
 
   function scheduleVisibilityRefresh() {
@@ -82,4 +116,5 @@
       }
     });
   }
+
 </script>
