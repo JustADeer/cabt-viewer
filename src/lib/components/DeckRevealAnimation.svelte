@@ -2,15 +2,13 @@
   import { cardBackCssVar, cardFaceImageUrl } from '../game/cardAssets';
   import { onDestroy } from 'svelte';
   import {
+    centralVisibilityClaimOwnsElement,
     hideElementForAnimation,
     releaseElementVisibilityClaim,
     type ElementVisibilityClaim,
   } from '../animations/animationVisibilityClaims';
   import {
-    animationAnchorForElement,
-    serializeAnimationAnchor,
     type AnimationAnchorRef,
-    type AnimationIdentity,
   } from '../animations/animationAnchors';
   import type { ReplayAnimationPhasePlan, RevealSessionAnimationMotion, RevealSessionStep } from '../animations/replayAnimationPlan';
   import { actionAnimationBatchEvents, actionAnimationStartMs, actionAnimationTiming } from '../cabt/actionAnimationSchedule';
@@ -1014,35 +1012,11 @@
   }
 
   function centralDestinationClaimOwns(element: HTMLElement): boolean {
-    const anchoredElement = animationAnchorForElement(element);
-    const anchorKey = anchoredElement ? serializeAnimationAnchor(anchoredElement.anchor) : undefined;
-    if (!anchorKey) {
-      return false;
-    }
-    return !!animationPlan?.visibilityClaims.some((claim) =>
-      claim.role === 'destination'
-      && serializeAnimationAnchor(claim.anchor) === anchorKey
-      && animationIdentityMatchesClaim(anchoredElement?.identity, claim.identity),
-    );
-  }
-
-  function animationIdentityMatchesClaim(
-    elementIdentity: AnimationIdentity | undefined,
-    claimIdentity: AnimationIdentity | undefined,
-  ): boolean {
-    if (!elementIdentity || !claimIdentity) {
-      return true;
-    }
-    if (elementIdentity.serial !== undefined && claimIdentity.serial !== undefined) {
-      return elementIdentity.serial === claimIdentity.serial;
-    }
-    if (elementIdentity.cardId !== undefined && claimIdentity.cardId !== undefined) {
-      return elementIdentity.cardId === claimIdentity.cardId;
-    }
-    if (elementIdentity.name && claimIdentity.name) {
-      return elementIdentity.name === claimIdentity.name;
-    }
-    return true;
+    return centralVisibilityClaimOwnsElement({
+      element,
+      role: 'destination',
+      claims: animationPlan?.visibilityClaims,
+    });
   }
 
   function showTargets(targets: HiddenRevealTarget[]) {

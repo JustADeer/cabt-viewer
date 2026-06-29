@@ -1,12 +1,10 @@
 <script lang="ts">
   import { onDestroy, tick } from 'svelte';
   import {
-    animationAnchorForElement,
     resolveAnimationAnchorElements,
-    serializeAnimationAnchor,
-    type AnimationIdentity,
   } from '../animations/animationAnchors';
   import {
+    centralVisibilityClaimOwnsElement,
     hideElementForAnimation,
     releaseElementVisibilityClaims,
     type ElementVisibilityClaim,
@@ -108,7 +106,11 @@
       }
       const sourceElement = sourceElementForMotion(motion);
       const targetElement = targetElementForMotion(motion);
-      if (targetElement && !centralClaimOwns(targetElement, 'destination')) {
+      if (targetElement && !centralVisibilityClaimOwnsElement({
+        element: targetElement,
+        role: 'destination',
+        claims: animationPlan?.visibilityClaims,
+      })) {
         sprite.visibilityClaims.push(hideElementForAnimation({
           element: targetElement,
           scopeKey,
@@ -119,7 +121,11 @@
         if (nextGeneration !== generation) {
           return;
         }
-        if (sourceElement && !centralClaimOwns(sourceElement, 'source')) {
+        if (sourceElement && !centralVisibilityClaimOwnsElement({
+          element: sourceElement,
+          role: 'source',
+          claims: animationPlan?.visibilityClaims,
+        })) {
           sprite.visibilityClaims.push(hideElementForAnimation({
             element: sourceElement,
             scopeKey,
@@ -209,38 +215,6 @@
       return 24;
     }
     return replayMode ? replayAnimationPhaseGapMs + 40 : 40;
-  }
-
-  function centralClaimOwns(element: HTMLElement, role: 'source' | 'destination'): boolean {
-    const anchoredElement = animationAnchorForElement(element);
-    const anchorKey = anchoredElement ? serializeAnimationAnchor(anchoredElement.anchor) : undefined;
-    if (!anchorKey) {
-      return false;
-    }
-    return !!animationPlan?.visibilityClaims.some((claim) =>
-      claim.role === role
-      && serializeAnimationAnchor(claim.anchor) === anchorKey
-      && animationIdentityMatchesClaim(anchoredElement.identity, claim.identity),
-    );
-  }
-
-  function animationIdentityMatchesClaim(
-    elementIdentity: AnimationIdentity | undefined,
-    claimIdentity: AnimationIdentity | undefined,
-  ): boolean {
-    if (!elementIdentity || !claimIdentity) {
-      return true;
-    }
-    if (elementIdentity.serial !== undefined && claimIdentity.serial !== undefined) {
-      return elementIdentity.serial === claimIdentity.serial;
-    }
-    if (elementIdentity.cardId !== undefined && claimIdentity.cardId !== undefined) {
-      return elementIdentity.cardId === claimIdentity.cardId;
-    }
-    if (elementIdentity.name && claimIdentity.name) {
-      return elementIdentity.name === claimIdentity.name;
-    }
-    return true;
   }
 
   function removeSpriteAfterPrepaint(spriteIdToRemove: string, currentGeneration: number) {

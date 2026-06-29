@@ -2,15 +2,13 @@
   import { cardBackCssVar, cardFaceImageUrl } from '../game/cardAssets';
   import { onDestroy, onMount } from 'svelte';
   import {
+    centralVisibilityClaimOwnsElement,
     hideElementForAnimation,
     releaseElementVisibilityClaim,
     type ElementVisibilityClaim,
   } from '../animations/animationVisibilityClaims';
   import {
-    animationAnchorForElement,
     resolveAnimationAnchorElements,
-    serializeAnimationAnchor,
-    type AnimationIdentity,
   } from '../animations/animationAnchors';
   import type { CardMoveAnimationMotion, ReplayAnimationPhasePlan } from '../animations/replayAnimationPlan';
   import { actionAnimationBatchEvents, actionAnimationStartMs } from '../cabt/actionAnimationSchedule';
@@ -489,35 +487,11 @@
   }
 
   function centralSourceClaimOwns(element: HTMLElement): boolean {
-    const anchoredElement = animationAnchorForElement(element);
-    const anchorKey = anchoredElement ? serializeAnimationAnchor(anchoredElement.anchor) : undefined;
-    if (!anchorKey) {
-      return false;
-    }
-    return !!animationPlan?.visibilityClaims.some((claim) =>
-      claim.role === 'source'
-      && serializeAnimationAnchor(claim.anchor) === anchorKey
-      && animationIdentityMatchesClaim(anchoredElement.identity, claim.identity),
-    );
-  }
-
-  function animationIdentityMatchesClaim(
-    elementIdentity: AnimationIdentity | undefined,
-    claimIdentity: AnimationIdentity | undefined,
-  ): boolean {
-    if (!elementIdentity || !claimIdentity) {
-      return true;
-    }
-    if (elementIdentity.serial !== undefined && claimIdentity.serial !== undefined) {
-      return elementIdentity.serial === claimIdentity.serial;
-    }
-    if (elementIdentity.cardId !== undefined && claimIdentity.cardId !== undefined) {
-      return elementIdentity.cardId === claimIdentity.cardId;
-    }
-    if (elementIdentity.name && claimIdentity.name) {
-      return elementIdentity.name === claimIdentity.name;
-    }
-    return true;
+    return centralVisibilityClaimOwnsElement({
+      element,
+      role: 'source',
+      claims: animationPlan?.visibilityClaims,
+    });
   }
 
   function showSources(sources: HiddenResetSource[]) {

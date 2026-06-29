@@ -7,6 +7,7 @@ import {
 } from './animationAnchors';
 import {
   replayAnimationVisibility,
+  type AnimationVisibilityClaim,
   type AnimationVisibilityRole,
   type AnimationVisibilityToken,
 } from './animationVisibility';
@@ -171,6 +172,30 @@ export function refreshAnimationVisibilityClaims(): void {
   replayAnimationVisibility.refresh();
 }
 
+export function centralVisibilityClaimOwnsElement(input: {
+  element: HTMLElement;
+  role: AnimationVisibilityRole;
+  claims?: readonly AnimationVisibilityClaim[];
+  plannedAnchor?: AnimationAnchorRef;
+}): boolean {
+  const anchoredElement = animationAnchorForElement(input.element);
+  const anchorKeys = new Set<string>();
+  if (input.plannedAnchor) {
+    anchorKeys.add(serializeAnimationAnchor(input.plannedAnchor));
+  }
+  if (anchoredElement) {
+    anchorKeys.add(serializeAnimationAnchor(anchoredElement.anchor));
+  }
+  if (!anchorKeys.size) {
+    return false;
+  }
+  return !!input.claims?.some((claim) =>
+    claim.role === input.role
+    && anchorKeys.has(serializeAnimationAnchor(claim.anchor))
+    && animationIdentityMatchesClaim(anchoredElement?.identity, claim.identity),
+  );
+}
+
 function resolveAnchorInput(input: AnchorVisibilityClaimInput): AnimationAnchorRef {
   if (input.anchor) {
     return input.anchor;
@@ -184,6 +209,25 @@ function resolveAnchorInput(input: AnchorVisibilityClaimInput): AnimationAnchorR
     throw new Error(`Invalid animation visibility anchor key: ${anchorKey}`);
   }
   return anchor;
+}
+
+function animationIdentityMatchesClaim(
+  elementIdentity: AnimationIdentity | undefined,
+  claimIdentity: AnimationIdentity | undefined,
+): boolean {
+  if (!elementIdentity || !claimIdentity) {
+    return true;
+  }
+  if (elementIdentity.serial !== undefined && claimIdentity.serial !== undefined) {
+    return elementIdentity.serial === claimIdentity.serial;
+  }
+  if (elementIdentity.cardId !== undefined && claimIdentity.cardId !== undefined) {
+    return elementIdentity.cardId === claimIdentity.cardId;
+  }
+  if (elementIdentity.name && claimIdentity.name) {
+    return elementIdentity.name === claimIdentity.name;
+  }
+  return true;
 }
 
 function claimFallbackAttribute(element: HTMLElement, attribute: string, scopeKey: string): string {

@@ -1,13 +1,12 @@
 <script lang="ts">
   import { onDestroy, onMount } from 'svelte';
   import {
-    animationAnchorForElement,
     resolveAnimationAnchorElements,
-    serializeAnimationAnchor,
     type AnimationAnchorRef,
     type AnimationIdentity,
   } from '../animations/animationAnchors';
   import {
+    centralVisibilityClaimOwnsElement,
     hideElementForAnimation,
     releaseElementVisibilityClaim,
     type ElementVisibilityClaim,
@@ -516,7 +515,12 @@
     fallbackAttribute: string,
     plannedAnchor?: AnimationAnchorRef,
   ) {
-    if (centralClaimOwns(element, role, plannedAnchor)) {
+    if (centralVisibilityClaimOwnsElement({
+      element,
+      role,
+      claims: animationPlan?.visibilityClaims,
+      plannedAnchor,
+    })) {
       return;
     }
     sprite.visibilityClaims.push(hideElementForAnimation({
@@ -525,44 +529,6 @@
       role,
       fallbackAttribute,
     }));
-  }
-
-  function centralClaimOwns(element: HTMLElement, role: AnimationVisibilityRole, plannedAnchor?: AnimationAnchorRef): boolean {
-    const anchoredElement = animationAnchorForElement(element);
-    const anchorKeys = new Set<string>();
-    if (plannedAnchor) {
-      anchorKeys.add(serializeAnimationAnchor(plannedAnchor));
-    }
-    if (anchoredElement) {
-      anchorKeys.add(serializeAnimationAnchor(anchoredElement.anchor));
-    }
-    if (!anchorKeys.size) {
-      return false;
-    }
-    return !!animationPlan?.visibilityClaims.some((claim) =>
-      claim.role === role
-      && anchorKeys.has(serializeAnimationAnchor(claim.anchor))
-      && animationIdentityMatchesClaim(anchoredElement?.identity, claim.identity),
-    );
-  }
-
-  function animationIdentityMatchesClaim(
-    elementIdentity: AnimationIdentity | undefined,
-    claimIdentity: AnimationIdentity | undefined,
-  ): boolean {
-    if (!elementIdentity || !claimIdentity) {
-      return true;
-    }
-    if (elementIdentity.serial !== undefined && claimIdentity.serial !== undefined) {
-      return elementIdentity.serial === claimIdentity.serial;
-    }
-    if (elementIdentity.cardId !== undefined && claimIdentity.cardId !== undefined) {
-      return elementIdentity.cardId === claimIdentity.cardId;
-    }
-    if (elementIdentity.name && claimIdentity.name) {
-      return elementIdentity.name === claimIdentity.name;
-    }
-    return true;
   }
 
   function releaseActiveSprite(sprite: ActiveAttachedMoveSprite) {
