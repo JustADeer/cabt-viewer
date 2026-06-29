@@ -1422,7 +1422,7 @@ function replayAnimationPlanForPhase(
   label: string | undefined,
   stepEvents: ActionTimelineEvent[] = phase.events,
 ) {
-  const visibilityClaims = animationPhaseVisibilityClaims(phase, view);
+  const visibilityClaims = animationPhaseVisibilityClaims(phase, view, stepEvents);
   const motions = animationPhaseMotions(phase, view, stepEvents);
   if (!visibilityClaims.length && !motions.length) {
     return undefined;
@@ -1977,6 +1977,7 @@ function revealSessionStep(
   const serial = finiteNumber(params?.serial);
   const cardId = finiteNumber(params?.cardId);
   const resolvesToVisibleDestination = kind === 'take' || kind === 'attach';
+  const handoffPolicy = revealSessionStepHandoffPolicy(kind, options.sourceAnchor, resolvesToVisibleDestination);
   return {
     id: `${phase.key}:${kind}:${event.id}:${serial ?? cardId ?? 'unknown'}`,
     kind,
@@ -1994,12 +1995,30 @@ function revealSessionStep(
     },
     startMs: options.startMs ?? actionAnimationStartMs(phase.events, event),
     durationMs: options.durationMs,
-    handoffPolicy: {
+    handoffPolicy,
+  };
+}
+
+function revealSessionStepHandoffPolicy(
+  kind: RevealSessionStep['kind'],
+  sourceAnchor: AnimationAnchorRef | undefined,
+  resolvesToVisibleDestination: boolean,
+): RevealSessionStep['handoffPolicy'] {
+  if (!resolvesToVisibleDestination) {
+    return {
       hideSourceUntil: 'none',
-      hideDestinationUntil: resolvesToVisibleDestination ? 'prepaint' : 'none',
-      removeSprite: resolvesToVisibleDestination ? 'prepaint' : 'phase-end',
+      hideDestinationUntil: 'none',
+      removeSprite: 'phase-end',
       prepaintFrames: 2,
-    },
+    };
+  }
+
+  const directDeckSearchTake = kind === 'take' && sourceAnchor?.kind === 'deck-top';
+  return {
+    hideSourceUntil: 'none',
+    hideDestinationUntil: directDeckSearchTake ? 'arrival' : 'prepaint',
+    removeSprite: directDeckSearchTake ? 'arrival' : 'prepaint',
+    prepaintFrames: 2,
   };
 }
 
@@ -2386,8 +2405,18 @@ function stringValue(value: unknown): string | undefined {
   return typeof value === 'string' ? value : undefined;
 }
 
-function animationPhaseVisibilityClaims(phase: AnimationEventPhase, view: GameView): AnimationVisibilityClaim[] {
-  if (phase.key.startsWith('Play:') || phase.key.startsWith('HandMove:') || phase.key.startsWith('Attach:') || phase.key.startsWith('Evolve:')) {
+function animationPhaseVisibilityClaims(
+  phase: AnimationEventPhase,
+  view: GameView,
+  stepEvents: ActionTimelineEvent[] = phase.events,
+): AnimationVisibilityClaim[] {
+  if (phase.key.startsWith('Attach:')) {
+    return [
+      ...handPlayDestinationVisibilityClaims(phase, view),
+      ...revealSessionVisibilityClaims(phase, view, stepEvents),
+    ];
+  }
+  if (phase.key.startsWith('Play:') || phase.key.startsWith('HandMove:') || phase.key.startsWith('Evolve:')) {
     return handPlayDestinationVisibilityClaims(phase, view);
   }
   if (phase.key.startsWith('Draw:')) {
@@ -2403,8 +2432,13 @@ function animationPhaseVisibilityClaims(phase: AnimationEventPhase, view: GameVi
   ) {
     return boardCardMoveVisibilityClaims(phase, view);
   }
-  if (phase.key.startsWith('DeckRevealTake:')) {
-    return handTakeDestinationVisibilityClaims(phase, view);
+  if (
+    phase.key.startsWith('DeckReveal:')
+    || phase.key.startsWith('DeckSearchReveal:')
+    || phase.key.startsWith('DeckRevealReturn:')
+    || phase.key.startsWith('DeckRevealTake:')
+  ) {
+    return revealSessionVisibilityClaims(phase, view, stepEvents);
   }
   if (phase.key.startsWith('PrizeTake:')) {
     return prizeTakeDestinationVisibilityClaims(phase, view);
@@ -2416,6 +2450,38 @@ function animationPhaseVisibilityClaims(phase: AnimationEventPhase, view: GameVi
     ];
   }
   return [];
+}
+
+function revealSessionVisibilityClaims(
+  phase: AnimationEventPhase,
+  view: GameView,
+  stepEvents: ActionTimelineEvent[],
+): AnimationVisibilityClaim[] {
+  const claims: AnimationVisibilityClaim[] = [];
+  for (const motion of revealSessionMotions(phase, view, stepEvents)) {
+    if (motion.kind !== 'reveal-session') {
+      continue;
+    }
+    for (const step of motion.steps) {
+      if (step.sourceAnchor && step.handoffPolicy?.hideSourceUntil !== 'none') {
+        claims.push({
+          scopeKey: phase.key,
+          anchor: step.sourceAnchor,
+          identity: step.identity,
+          role: 'source',
+        });
+      }
+      if (step.targetAnchor && step.handoffPolicy?.hideDestinationUntil !== 'none') {
+        claims.push({
+          scopeKey: phase.key,
+          anchor: step.targetAnchor,
+          identity: step.identity,
+          role: 'destination',
+        });
+      }
+    }
+  }
+  return claims;
 }
 
 function boardCardMoveVisibilityClaims(phase: AnimationEventPhase, view: GameView): AnimationVisibilityClaim[] {
@@ -2589,45 +2655,6 @@ function boardPokemonDestinationForEvent(
   }
   const benchSlot = player.bench.find((slot) => slot.pokemon && eventCardMatches(slot.pokemon, event));
   return benchSlot ? { kind: 'bench', slot: benchSlot } : undefined;
-}
-
-function handTakeDestinationVisibilityClaims(phase: AnimationEventPhase, view: GameView): AnimationVisibilityClaim[] {
-  const claims: AnimationVisibilityClaim[] = [];
-  for (const event of phase.events) {
-    const params = event.params as Record<string, unknown> | undefined;
-    const playerIndex = event.playerIndex;
-    if (
-      playerIndex === undefined
-      || !isMoveCardKind(event.kind)
-      || Number(params?.fromArea) !== CabtAreaType.LOOKING
-      || Number(params?.toArea) !== CabtAreaType.HAND
-    ) {
-      continue;
-    }
-    const hand = view.players[playerIndex]?.hand ?? [];
-    const handIndex = hand.findIndex((card) => eventCardMatches(card, event));
-    const card = hand[handIndex];
-    if (handIndex < 0 || !card) {
-      continue;
-    }
-    claims.push({
-      scopeKey: phase.key,
-      anchor: {
-        kind: 'hand-card',
-        playerIndex,
-        handIndex,
-        serial: card.serial,
-      },
-      identity: {
-        kind: 'card',
-        serial: card.serial,
-        cardId: card.id,
-        name: card.name,
-      },
-      role: 'destination',
-    });
-  }
-  return claims;
 }
 
 function prizeTakeDestinationVisibilityClaims(phase: AnimationEventPhase, view: GameView): AnimationVisibilityClaim[] {

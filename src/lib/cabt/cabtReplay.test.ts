@@ -944,8 +944,20 @@ describe('cabtReplayToSnapshot', () => {
             sourceAnchor: { kind: 'deck-top', playerIndex: 0 },
             targetAnchor: { kind: 'hand-card', playerIndex: 0, handIndex: 1, serial: 13 },
             identity: expect.objectContaining({ kind: 'card', serial: 13, cardId: 723 }),
+            handoffPolicy: expect.objectContaining({
+              hideDestinationUntil: 'arrival',
+              removeSprite: 'arrival',
+            }),
           }),
         ],
+      }),
+    ]);
+    expect(step.animationPhases?.[1].animationPlan?.visibilityClaims).toEqual([
+      expect.objectContaining({
+        scopeKey: 'DeckSearchReveal:0',
+        role: 'destination',
+        anchor: { kind: 'hand-card', playerIndex: 0, handIndex: 1, serial: 13 },
+        identity: expect.objectContaining({ kind: 'card', serial: 13, cardId: 723 }),
       }),
     ]);
     expect(step.displayView?.players[0].hand.map((card) => card.serial)).toEqual([46, 13]);
@@ -1021,8 +1033,20 @@ describe('cabtReplayToSnapshot', () => {
             sourceAnchor: { kind: 'deck-top', playerIndex: 0 },
             targetAnchor: { kind: 'hand-card', playerIndex: 0, handIndex: 1, serial: 13 },
             identity: expect.objectContaining({ kind: 'card', serial: 13, cardId: 723 }),
+            handoffPolicy: expect.objectContaining({
+              hideDestinationUntil: 'arrival',
+              removeSprite: 'arrival',
+            }),
           }),
         ],
+      }),
+    ]);
+    expect(step.animationPhases?.[0].animationPlan?.visibilityClaims).toEqual([
+      expect.objectContaining({
+        scopeKey: 'DeckSearchReveal:0',
+        role: 'destination',
+        anchor: { kind: 'hand-card', playerIndex: 0, handIndex: 1, serial: 13 },
+        identity: expect.objectContaining({ kind: 'card', serial: 13, cardId: 723 }),
       }),
     ]);
   });
@@ -2795,8 +2819,20 @@ describe('cabtReplayToSnapshot', () => {
             sourceAnchor: { kind: 'reveal-card', playerIndex: 0, revealIndex: 0, serial: 32 },
             targetAnchor: { kind: 'attached-energy', playerIndex: 0, slot: 'active', slotIndex: 0, serial: 32 },
             identity: expect.objectContaining({ kind: 'card', serial: 32, cardId: 3 }),
+            handoffPolicy: expect.objectContaining({
+              hideDestinationUntil: 'prepaint',
+              removeSprite: 'prepaint',
+            }),
           }),
         ],
+      }),
+    ]);
+    expect(step.animationPhases?.[2].animationPlan?.visibilityClaims).toEqual([
+      expect.objectContaining({
+        scopeKey: 'Attach:0',
+        role: 'destination',
+        anchor: { kind: 'attached-energy', playerIndex: 0, slot: 'active', slotIndex: 0, serial: 32 },
+        identity: expect.objectContaining({ kind: 'card', serial: 32, cardId: 3 }),
       }),
     ]);
   });
@@ -3074,6 +3110,10 @@ describe('cabtReplayToSnapshot', () => {
             kind: 'take',
             identity: expect.objectContaining({ kind: 'card', serial: 117, cardId: 1227 }),
             targetAnchor: { kind: 'hand-card', playerIndex: 1, handIndex: 0, serial: 117 },
+            handoffPolicy: expect.objectContaining({
+              hideDestinationUntil: 'prepaint',
+              removeSprite: 'prepaint',
+            }),
           }),
         ],
       }),

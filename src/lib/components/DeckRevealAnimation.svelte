@@ -6,7 +6,12 @@
     releaseElementVisibilityClaim,
     type ElementVisibilityClaim,
   } from '../animations/animationVisibilityClaims';
-  import type { AnimationAnchorRef } from '../animations/animationAnchors';
+  import {
+    animationAnchorForElement,
+    serializeAnimationAnchor,
+    type AnimationAnchorRef,
+    type AnimationIdentity,
+  } from '../animations/animationAnchors';
   import type { ReplayAnimationPhasePlan, RevealSessionAnimationMotion, RevealSessionStep } from '../animations/replayAnimationPlan';
   import { actionAnimationBatchEvents, actionAnimationStartMs, actionAnimationTiming } from '../cabt/actionAnimationSchedule';
   import { cabtCardToView } from '../cabt/cardView';
@@ -51,6 +56,10 @@
   type RevealAnimation = {
     id: number;
     sprites: RevealSprite[];
+  };
+
+  type DestinationHideOptions = {
+    skipCentralDestinationClaims?: boolean;
   };
 
   type RevealCardAnchor = Extract<AnimationAnchorRef, { kind: 'reveal-card' }>;
@@ -105,15 +114,15 @@
         const takeEvents = planEvents.filter(isRevealTakeEvent);
         const returnEvents = planEvents.filter(isRevealReturnEvent);
         if (revealEvents.length) {
-          startReveal(revealEvents, planEvents);
+          startReveal(revealEvents, planEvents, { skipCentralDestinationClaims: true });
         } else {
           seedHeldRevealSprites(currentPlanMotions);
         }
         if (attachEvents.length) {
-          attachRevealedCards(attachEvents, planEvents);
+          attachRevealedCards(attachEvents, planEvents, { skipCentralDestinationClaims: true });
         }
         if (takeEvents.length) {
-          takeRevealedCards(takeEvents, planEvents);
+          takeRevealedCards(takeEvents, planEvents, { skipCentralDestinationClaims: true });
         }
         if (returnEvents.length) {
           returnRevealedCards(returnEvents, planEvents);
@@ -400,7 +409,11 @@
       && Number.isFinite(Number(params?.serial));
   }
 
-  function startReveal(revealEvents: ActionTimelineEvent[], animationEvents: ActionTimelineEvent[]) {
+  function startReveal(
+    revealEvents: ActionTimelineEvent[],
+    animationEvents: ActionTimelineEvent[],
+    hideOptions: DestinationHideOptions = {},
+  ) {
     const eventsByPlayer = new Map<number, ActionTimelineEvent[]>();
     for (const event of revealEvents) {
       if (event.playerIndex === undefined) {
@@ -422,7 +435,7 @@
     const hiddenTargets = sprites
       .filter((sprite) => sprite.mode === 'searching' && sprite.targetElement)
       .map((sprite) => sprite.targetElement!);
-    const hiddenSearchTargets = hideTargets(hiddenTargets);
+    const hiddenSearchTargets = hideTargets(hiddenTargets, hideOptions);
     const animation: RevealAnimation = {
       id: nextAnimationId++,
       sprites,
@@ -450,7 +463,11 @@
     timers.push(timer);
   }
 
-  function attachRevealedCards(attachEvents: ActionTimelineEvent[], animationEvents: ActionTimelineEvent[]) {
+  function attachRevealedCards(
+    attachEvents: ActionTimelineEvent[],
+    animationEvents: ActionTimelineEvent[],
+    hideOptions: DestinationHideOptions = {},
+  ) {
     for (const event of attachEvents) {
       const params = event.params as Record<string, unknown> | undefined;
       const serial = Number(params?.serial);
@@ -465,7 +482,7 @@
       const sourceCenter = spriteCenter(sprite);
       const targetCenter = centerOf(targetRect);
       const delayMs = animationStartMs(animationEvents, event);
-      markAttachTarget(target, serial, delayMs);
+      markAttachTarget(target, serial, delayMs, hideOptions);
       updateSprites((item) => item.serial === serial
         ? {
             ...item,
@@ -483,7 +500,11 @@
     }
   }
 
-  function takeRevealedCards(takeEvents: ActionTimelineEvent[], animationEvents: ActionTimelineEvent[]) {
+  function takeRevealedCards(
+    takeEvents: ActionTimelineEvent[],
+    animationEvents: ActionTimelineEvent[],
+    hideOptions: DestinationHideOptions = {},
+  ) {
     for (const event of takeEvents) {
       const params = event.params as Record<string, unknown> | undefined;
       const serial = Number(params?.serial);
@@ -498,7 +519,7 @@
       const takeSource = normalizedSpriteForTake(sprite);
       const sourceCenter = spriteCenter(takeSource);
       const delayMs = animationStartMs(animationEvents, event);
-      const hiddenTakeTargets = target.element ? hideTargets([target.element]) : [];
+      const hiddenTakeTargets = target.element ? hideTargets([target.element], hideOptions) : [];
       updateSprites((item) => item.serial === serial
         ? {
             ...normalizedSpriteForTake(item),
@@ -664,9 +685,14 @@
     return cardTile instanceof HTMLElement ? cardTile : target;
   }
 
-  function markAttachTarget(target: HTMLElement, serial: number, delayMs: number) {
+  function markAttachTarget(
+    target: HTMLElement,
+    serial: number,
+    delayMs: number,
+    hideOptions: DestinationHideOptions = {},
+  ) {
     const immediateElement = attachedCardElement(target, serial);
-    const immediateClaim = immediateElement
+    const immediateClaim = immediateElement && !shouldSkipLocalDestinationClaim(immediateElement, hideOptions)
       ? hideElementForAnimation({
           element: immediateElement,
           scopeKey,
@@ -966,9 +992,12 @@
     } as DOMRect;
   }
 
-  function hideTargets(targets: HTMLElement[]) {
+  function hideTargets(targets: HTMLElement[], options: DestinationHideOptions = {}) {
     const hidden: HiddenRevealTarget[] = [];
     for (const target of targets) {
+      if (shouldSkipLocalDestinationClaim(target, options)) {
+        continue;
+      }
       hidden.push(hideElementForAnimation({
         element: target,
         scopeKey,
@@ -978,6 +1007,42 @@
     }
     hiddenTargets = [...hiddenTargets, ...hidden];
     return hidden;
+  }
+
+  function shouldSkipLocalDestinationClaim(element: HTMLElement, options: DestinationHideOptions): boolean {
+    return !!options.skipCentralDestinationClaims && centralDestinationClaimOwns(element);
+  }
+
+  function centralDestinationClaimOwns(element: HTMLElement): boolean {
+    const anchoredElement = animationAnchorForElement(element);
+    const anchorKey = anchoredElement ? serializeAnimationAnchor(anchoredElement.anchor) : undefined;
+    if (!anchorKey) {
+      return false;
+    }
+    return !!animationPlan?.visibilityClaims.some((claim) =>
+      claim.role === 'destination'
+      && serializeAnimationAnchor(claim.anchor) === anchorKey
+      && animationIdentityMatchesClaim(anchoredElement?.identity, claim.identity),
+    );
+  }
+
+  function animationIdentityMatchesClaim(
+    elementIdentity: AnimationIdentity | undefined,
+    claimIdentity: AnimationIdentity | undefined,
+  ): boolean {
+    if (!elementIdentity || !claimIdentity) {
+      return true;
+    }
+    if (elementIdentity.serial !== undefined && claimIdentity.serial !== undefined) {
+      return elementIdentity.serial === claimIdentity.serial;
+    }
+    if (elementIdentity.cardId !== undefined && claimIdentity.cardId !== undefined) {
+      return elementIdentity.cardId === claimIdentity.cardId;
+    }
+    if (elementIdentity.name && claimIdentity.name) {
+      return elementIdentity.name === claimIdentity.name;
+    }
+    return true;
   }
 
   function showTargets(targets: HiddenRevealTarget[]) {
