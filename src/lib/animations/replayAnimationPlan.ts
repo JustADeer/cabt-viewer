@@ -57,6 +57,7 @@ export type RevealSessionAnimationMotion = TimedAnimationMotionBase & {
   kind: 'reveal-session';
   playerIndex: number;
   coordinateSpace: 'viewport';
+  revealCount?: number;
   steps: RevealSessionStep[];
   handoffPolicy: AnimationHandoffPolicy;
 };

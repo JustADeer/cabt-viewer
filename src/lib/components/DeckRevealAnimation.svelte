@@ -6,6 +6,8 @@
     releaseElementVisibilityClaim,
     type ElementVisibilityClaim,
   } from '../animations/animationVisibilityClaims';
+  import type { AnimationAnchorRef } from '../animations/animationAnchors';
+  import type { ReplayAnimationPhasePlan, RevealSessionAnimationMotion, RevealSessionStep } from '../animations/replayAnimationPlan';
   import { actionAnimationBatchEvents, actionAnimationStartMs, actionAnimationTiming } from '../cabt/actionAnimationSchedule';
   import { cabtCardToView } from '../cabt/cardView';
   import { CabtAreaType } from '../cabt/types';
@@ -15,6 +17,7 @@
     events?: ActionTimelineEvent[];
     scopeKey?: string | number;
     replayMode?: boolean;
+    animationPlan?: ReplayAnimationPhasePlan;
   };
 
   type RevealMode = 'revealing' | 'searching' | 'held' | 'selecting' | 'taking' | 'attaching' | 'returning';
@@ -50,13 +53,16 @@
     sprites: RevealSprite[];
   };
 
+  type RevealCardAnchor = Extract<AnimationAnchorRef, { kind: 'reveal-card' }>;
   type HiddenRevealTarget = ElementVisibilityClaim;
-
   let {
     events = [],
     scopeKey = '',
     replayMode = false,
+    animationPlan,
   }: Props = $props();
+
+  const plannedRevealMotions = $derived(revealSessionMotions(animationPlan));
 
   const timers: ReturnType<typeof setTimeout>[] = [];
   const handoffFrameIds: number[] = [];
@@ -66,6 +72,7 @@
   let seenEventIds = new Set<number>();
   let initialized = false;
   let lastScopeKey: string | number = '';
+  let lastPlanKey = '';
   let nextAnimationId = 1;
   const activeAttachElements = new Set<HTMLElement>();
   let activeAttachClaims: ElementVisibilityClaim[] = [];
@@ -78,8 +85,42 @@
   $effect(() => {
     const currentEvents = events;
     const currentScopeKey = scopeKey;
+    const currentPlanMotions = plannedRevealMotions;
+    const planKey = revealSessionPlanKey(currentPlanMotions);
     const scopeChanged = initialized && currentScopeKey !== lastScopeKey;
+    const planChanged = planKey !== lastPlanKey;
     lastScopeKey = currentScopeKey;
+    lastPlanKey = planKey;
+
+    if (currentPlanMotions.length) {
+      initialized = true;
+      for (const event of currentEvents) {
+        seenEventIds.add(event.id);
+      }
+      if (planChanged || scopeChanged) {
+        clearReveals();
+        const planEvents = revealSessionPlanEvents(currentPlanMotions);
+        const revealEvents = planEvents.filter(isDeckRevealEvent);
+        const attachEvents = planEvents.filter(isPlannedRevealAttachEvent);
+        const takeEvents = planEvents.filter(isRevealTakeEvent);
+        const returnEvents = planEvents.filter(isRevealReturnEvent);
+        if (revealEvents.length) {
+          startReveal(revealEvents, planEvents);
+        } else {
+          seedHeldRevealSprites(currentPlanMotions);
+        }
+        if (attachEvents.length) {
+          attachRevealedCards(attachEvents, planEvents);
+        }
+        if (takeEvents.length) {
+          takeRevealedCards(takeEvents, planEvents);
+        }
+        if (returnEvents.length) {
+          returnRevealedCards(returnEvents, planEvents);
+        }
+      }
+      return;
+    }
 
     if (!initialized) {
       for (const event of currentEvents) {
@@ -117,6 +158,204 @@
     }
   });
 
+  function revealSessionMotions(plan: ReplayAnimationPhasePlan | undefined): RevealSessionAnimationMotion[] {
+    return (plan?.motions ?? []).filter((motion): motion is RevealSessionAnimationMotion =>
+      motion.kind === 'reveal-session'
+      && motion.coordinateSpace === 'viewport',
+    );
+  }
+
+  function revealSessionPlanKey(motions: RevealSessionAnimationMotion[]): string {
+    return motions
+      .map((motion) => `${motion.id}:${motion.steps.map((step) => step.id).join(',')}`)
+      .join('|');
+  }
+
+  function revealSessionPlanEvents(motions: RevealSessionAnimationMotion[]): ActionTimelineEvent[] {
+    let nextPlanEventId = -1;
+    return motions.flatMap((motion) =>
+      motion.steps.flatMap((step) => {
+        const event = revealSessionStepEvent(motion, step, nextPlanEventId);
+        nextPlanEventId -= 1;
+        return event ? [event] : [];
+      }),
+    );
+  }
+
+  function revealSessionStepEvent(
+    motion: RevealSessionAnimationMotion,
+    step: RevealSessionStep,
+    id: number,
+  ): ActionTimelineEvent | undefined {
+    const card = step.spriteVisual?.kind === 'card' ? step.spriteVisual.card : undefined;
+    const cardId = step.identity?.cardId ?? card?.id;
+    const serial = step.identity?.serial ?? card?.serial;
+    const params = {
+      cardId,
+      serial,
+      cardName: step.identity?.name ?? card?.name,
+      planStartMs: step.startMs,
+    };
+
+    if (step.kind === 'reveal') {
+      return {
+        id,
+        playerIndex: motion.playerIndex,
+        kind: 'MoveCard',
+        message: 'Reveal card',
+        params: { ...params, fromArea: CabtAreaType.DECK, toArea: CabtAreaType.LOOKING },
+      };
+    }
+    if (step.kind === 'take') {
+      return {
+        id,
+        playerIndex: motion.playerIndex,
+        kind: 'MoveCard',
+        message: 'Take revealed card',
+        params: {
+          ...params,
+          fromArea: step.sourceAnchor?.kind === 'deck-top' ? CabtAreaType.DECK : CabtAreaType.LOOKING,
+          toArea: CabtAreaType.HAND,
+        },
+      };
+    }
+    if (step.kind === 'return') {
+      return {
+        id,
+        playerIndex: motion.playerIndex,
+        kind: 'MoveCard',
+        message: 'Return revealed card',
+        params: { ...params, fromArea: CabtAreaType.LOOKING, toArea: CabtAreaType.DECK },
+      };
+    }
+    if (step.kind === 'attach') {
+      return {
+        id,
+        playerIndex: motion.playerIndex,
+        kind: 'Attach',
+        message: 'Attach revealed card',
+        params: { ...params, targetAnchor: step.targetAnchor },
+      };
+    }
+    return undefined;
+  }
+
+  function seedHeldRevealSprites(motions: RevealSessionAnimationMotion[]) {
+    const plannedCards = plannedRevealCards(motions);
+    if (!plannedCards.length) {
+      return;
+    }
+
+    const sprites = plannedCards.flatMap(({ motion, step, anchor }) =>
+      heldRevealSpriteForStep(motion, step, anchor) ?? [],
+    );
+    if (sprites.length) {
+      reveals = [{
+        id: nextAnimationId++,
+        sprites,
+      }];
+    }
+  }
+
+  function plannedRevealCards(motions: RevealSessionAnimationMotion[]) {
+    const cards = new Map<string, {
+      motion: RevealSessionAnimationMotion;
+      step: RevealSessionStep;
+      anchor: RevealCardAnchor;
+    }>();
+    for (const motion of motions) {
+      for (const step of motion.steps) {
+        for (const anchor of revealCardAnchorsForStep(step)) {
+          cards.set(`${anchor.playerIndex}:${anchor.revealIndex}:${anchor.serial ?? ''}`, {
+            motion,
+            step,
+            anchor,
+          });
+        }
+      }
+    }
+    return Array.from(cards.values()).sort((left, right) =>
+      left.anchor.playerIndex - right.anchor.playerIndex
+      || left.anchor.revealIndex - right.anchor.revealIndex,
+    );
+  }
+
+  function revealCardAnchorsForStep(step: RevealSessionStep): RevealCardAnchor[] {
+    return [step.sourceAnchor, step.targetAnchor].filter((anchor): anchor is RevealCardAnchor =>
+      anchor?.kind === 'reveal-card',
+    );
+  }
+
+  function heldRevealSpriteForStep(
+    motion: RevealSessionAnimationMotion,
+    step: RevealSessionStep,
+    anchor: RevealCardAnchor,
+  ): RevealSprite | undefined {
+    const deckRect = deckTopElement(motion.playerIndex)?.getBoundingClientRect();
+    if (!deckRect || deckRect.width <= 0 || deckRect.height <= 0) {
+      return undefined;
+    }
+    const card = cardViewForRevealStep(motion, step, anchor);
+    if (!card) {
+      return undefined;
+    }
+    const revealCount = revealCountForMotion(motion);
+    const layout = revealLayout(revealCount);
+    const deckCenter = centerOf(deckRect);
+    const target = layout.target(anchor.revealIndex);
+    return {
+      id: `planned-held-${motion.playerIndex}-${anchor.revealIndex}-${anchor.serial ?? card.id}`,
+      card,
+      serial: card.serial,
+      order: anchor.revealIndex + 1,
+      mode: 'held',
+      delayMs: 0,
+      left: deckCenter.x - layout.cardWidth / 2,
+      top: deckCenter.y - layout.cardHeight / 2,
+      width: layout.cardWidth,
+      height: layout.cardHeight,
+      revealX: target.x - deckCenter.x,
+      revealY: target.y - deckCenter.y,
+      deckScale: Math.max(0.32, Math.min(0.9, deckRect.width / layout.cardWidth)),
+      takeX: 0,
+      takeY: 0,
+      takeScale: 1,
+      takeRotation: 0,
+      takeFlip: 180,
+      exitX: 0,
+      exitY: 0,
+      exitScale: 1,
+      rotation: target.rotation,
+    };
+  }
+
+  function revealCountForMotion(motion: RevealSessionAnimationMotion): number {
+    if (Number.isFinite(motion.revealCount) && (motion.revealCount ?? 0) > 0) {
+      return motion.revealCount ?? 1;
+    }
+    const maxRevealIndex = motion.steps
+      .flatMap(revealCardAnchorsForStep)
+      .reduce((maxIndex, anchor) => Math.max(maxIndex, anchor.revealIndex), -1);
+    return Math.max(1, maxRevealIndex + 1);
+  }
+
+  function cardViewForRevealStep(
+    motion: RevealSessionAnimationMotion,
+    step: RevealSessionStep,
+    anchor: RevealCardAnchor,
+  ): CardView | undefined {
+    const spriteCard = step.spriteVisual?.kind === 'card' ? step.spriteVisual.card : undefined;
+    const cardId = step.identity?.cardId ?? spriteCard?.id;
+    if (!Number.isFinite(Number(cardId))) {
+      return undefined;
+    }
+    return {
+      ...cabtCardToView(Number(cardId)),
+      serial: step.identity?.serial ?? spriteCard?.serial ?? anchor.serial,
+      playerIndex: motion.playerIndex,
+    };
+  }
+
   function shouldAnimateEvent(event: ActionTimelineEvent, scopeChanged: boolean): boolean {
     return (replayMode && scopeChanged) || !seenEventIds.has(event.id);
   }
@@ -138,6 +377,11 @@
     return event.kind === 'Attach'
       && Number.isFinite(serial)
       && reveals.some((reveal) => reveal.sprites.some((sprite) => sprite.serial === serial));
+  }
+
+  function isPlannedRevealAttachEvent(event: ActionTimelineEvent): boolean {
+    const serial = Number((event.params as Record<string, unknown> | undefined)?.serial);
+    return event.kind === 'Attach' && Number.isFinite(serial);
   }
 
   function isRevealReturnEvent(event: ActionTimelineEvent): boolean {
@@ -211,7 +455,8 @@
       const params = event.params as Record<string, unknown> | undefined;
       const serial = Number(params?.serial);
       const sprite = revealSprite(serial);
-      const target = boardSlotByPokemonIdentity(Number(params?.serialTarget), Number(params?.cardIdTarget), event.playerIndex);
+      const target = boardSlotByPokemonIdentity(Number(params?.serialTarget), Number(params?.cardIdTarget), event.playerIndex)
+        ?? boardSlotForRevealTargetAnchor(params?.targetAnchor);
       const targetRect = visualTargetForAnimation(target)?.getBoundingClientRect();
       if (!sprite || !targetRect || targetRect.width <= 0 || targetRect.height <= 0) {
         continue;
@@ -219,7 +464,7 @@
 
       const sourceCenter = spriteCenter(sprite);
       const targetCenter = centerOf(targetRect);
-      const delayMs = actionAnimationStartMs(animationEvents, event);
+      const delayMs = animationStartMs(animationEvents, event);
       markAttachTarget(target, serial, delayMs);
       updateSprites((item) => item.serial === serial
         ? {
@@ -252,7 +497,7 @@
       }
       const takeSource = normalizedSpriteForTake(sprite);
       const sourceCenter = spriteCenter(takeSource);
-      const delayMs = actionAnimationStartMs(animationEvents, event);
+      const delayMs = animationStartMs(animationEvents, event);
       const hiddenTakeTargets = target.element ? hideTargets([target.element]) : [];
       updateSprites((item) => item.serial === serial
         ? {
@@ -305,7 +550,7 @@
           continue;
         }
         const sourceCenter = spriteCenter(sprite);
-        const delayMs = actionAnimationStartMs(animationEvents, event);
+        const delayMs = animationStartMs(animationEvents, event);
         updateSprites((item) => item.serial === serial
           ? {
               ...item,
@@ -400,6 +645,17 @@
     return null;
   }
 
+  function boardSlotForRevealTargetAnchor(value: unknown): HTMLElement | null {
+    const anchor = value as Partial<AnimationAnchorRef> | undefined;
+    if (!anchor || (anchor.kind !== 'attached-energy' && anchor.kind !== 'attached-tool')) {
+      return null;
+    }
+    const element = document.querySelector(
+      `[data-card-anchor="player:${anchor.playerIndex}:${anchor.slot}:${anchor.slotIndex}"]`,
+    );
+    return element instanceof HTMLElement ? element : null;
+  }
+
   function visualTargetForAnimation(target: HTMLElement | null): HTMLElement | null {
     if (!target) {
       return null;
@@ -409,10 +665,10 @@
   }
 
   function markAttachTarget(target: HTMLElement, serial: number, delayMs: number) {
-    const immediateBadge = attachedEnergyElement(target, serial);
-    const immediateClaim = immediateBadge
+    const immediateElement = attachedCardElement(target, serial);
+    const immediateClaim = immediateElement
       ? hideElementForAnimation({
-          element: immediateBadge,
+          element: immediateElement,
           scopeKey,
           role: 'destination',
           fallbackAttribute: 'data-reveal-animation-hidden',
@@ -422,20 +678,20 @@
       activeAttachClaims = [...activeAttachClaims, immediateClaim];
     }
     const startTimer = setTimeout(() => {
-      const energyBadge = attachedEnergyElement(target, serial);
-      energyBadge?.classList.add('reveal-attach-handoff-energy');
-      if (energyBadge) {
-        activeAttachElements.add(energyBadge);
+      const attachedElement = attachedCardElement(target, serial);
+      attachedElement?.classList.add('reveal-attach-handoff-energy');
+      if (attachedElement) {
+        activeAttachElements.add(attachedElement);
       }
       if (immediateClaim) {
         releaseAttachClaim(immediateClaim);
       }
     }, delayMs);
     const endTimer = setTimeout(() => {
-      const energyBadge = attachedEnergyElement(target, serial);
-      energyBadge?.classList.remove('reveal-attach-handoff-energy');
-      if (energyBadge) {
-        activeAttachElements.delete(energyBadge);
+      const attachedElement = attachedCardElement(target, serial);
+      attachedElement?.classList.remove('reveal-attach-handoff-energy');
+      if (attachedElement) {
+        activeAttachElements.delete(attachedElement);
       }
     }, delayMs + actionAnimationTiming.handMoveMs + 120);
     timers.push(startTimer, endTimer);
@@ -457,16 +713,24 @@
     activeAttachClaims = activeAttachClaims.filter((item) => item !== claim);
   }
 
-  function attachedEnergyElement(target: HTMLElement, serial: number): HTMLElement | null {
+  function attachedCardElement(target: HTMLElement, serial: number): HTMLElement | null {
     if (Number.isFinite(serial)) {
       const bySerial = target.querySelector(`[data-energy-serial="${serial}"]`);
       if (bySerial instanceof HTMLElement) {
         return bySerial;
       }
+      const byToolSerial = target.querySelector(`[data-tool-serial="${serial}"]`);
+      if (byToolSerial instanceof HTMLElement) {
+        return byToolSerial;
+      }
     }
     const badges = target.querySelectorAll('.energy-badges img');
-    const fallback = badges.item(badges.length - 1);
-    return fallback instanceof HTMLElement ? fallback : null;
+    const energyFallback = badges.item(badges.length - 1);
+    if (energyFallback instanceof HTMLElement) {
+      return energyFallback;
+    }
+    const toolFallback = target.querySelector('.tool-card-preview');
+    return toolFallback instanceof HTMLElement ? toolFallback : null;
   }
 
   function spritesForPlayer(
@@ -503,7 +767,7 @@
         targetElement: takeTarget?.element,
         order: index + 1,
         mode,
-        delayMs: actionAnimationStartMs(animationEvents, event),
+        delayMs: animationStartMs(animationEvents, event),
         left: deckCenter.x - layout.cardWidth / 2,
         top: deckCenter.y - layout.cardHeight / 2,
         width: layout.cardWidth,
@@ -731,6 +995,11 @@
 
   function motionDurationMs(durationMs: number): number {
     return typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 1 : durationMs;
+  }
+
+  function animationStartMs(animationEvents: ActionTimelineEvent[], event: ActionTimelineEvent): number {
+    const planStartMs = Number((event.params as Record<string, unknown> | undefined)?.planStartMs);
+    return Number.isFinite(planStartMs) ? planStartMs : actionAnimationStartMs(animationEvents, event);
   }
 
   function spriteCenter(sprite: RevealSprite): { x: number; y: number } {

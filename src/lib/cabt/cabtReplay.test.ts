@@ -714,6 +714,7 @@ describe('cabtReplayToSnapshot', () => {
         kind: 'reveal-session',
         playerIndex: 0,
         coordinateSpace: 'viewport',
+        revealCount: 1,
         steps: [
           expect.objectContaining({
             kind: 'take',
@@ -2453,6 +2454,7 @@ describe('cabtReplayToSnapshot', () => {
         kind: 'reveal-session',
         playerIndex: 0,
         coordinateSpace: 'viewport',
+        revealCount: 3,
         steps: [
           expect.objectContaining({
             kind: 'attach',
@@ -2683,6 +2685,7 @@ describe('cabtReplayToSnapshot', () => {
         kind: 'reveal-session',
         playerIndex: 1,
         coordinateSpace: 'viewport',
+        revealCount: 7,
         steps: [
           expect.objectContaining({
             kind: 'reveal',

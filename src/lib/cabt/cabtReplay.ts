@@ -1486,6 +1486,7 @@ function revealSessionMotions(
     kind: 'reveal-session',
     playerIndex,
     coordinateSpace: 'viewport',
+    revealCount: revealEvents.length || undefined,
     startMs: 0,
     durationMs: phase.durationMs,
     steps,
