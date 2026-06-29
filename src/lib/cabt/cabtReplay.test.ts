@@ -3949,11 +3949,22 @@ describe('cabtReplayToSnapshot', () => {
         targetAnchor: { kind: 'hand-card', playerIndex: 0, handIndex: 0, serial: 91 },
         identity: { kind: 'energy', serial: 91, cardId: 3 },
         durationMs: 360,
+        handoffPolicy: {
+          hideSourceUntil: 'scope-exit',
+          hideDestinationUntil: 'arrival',
+          removeSprite: 'arrival',
+        },
       },
     ]);
     expect(step.animationPhases?.[0].animationPlan?.visibilityClaims).toMatchObject([
       {
+        anchor: { kind: 'attached-energy', playerIndex: 0, slot: 'active', slotIndex: 0, serial: 91 },
+        identity: { kind: 'energy', serial: 91, cardId: 3 },
+        role: 'source',
+      },
+      {
         anchor: { kind: 'hand-card', playerIndex: 0, handIndex: 0, serial: 91 },
+        identity: { kind: 'energy', serial: 91, cardId: 3 },
         role: 'destination',
       },
     ]);
@@ -4034,11 +4045,22 @@ describe('cabtReplayToSnapshot', () => {
         sourceAnchor: { kind: 'attached-tool', playerIndex: 1, slot: 'active', slotIndex: 0, serial: 92 },
         targetAnchor: { kind: 'hand-card', playerIndex: 1, handIndex: 0, serial: 92 },
         identity: { kind: 'tool', serial: 92, cardId: 99 },
+        handoffPolicy: {
+          hideSourceUntil: 'scope-exit',
+          hideDestinationUntil: 'arrival',
+          removeSprite: 'arrival',
+        },
       },
     ]);
     expect(step.animationPhases?.[0].animationPlan?.visibilityClaims).toMatchObject([
       {
+        anchor: { kind: 'attached-tool', playerIndex: 1, slot: 'active', slotIndex: 0, serial: 92 },
+        identity: { kind: 'tool', serial: 92, cardId: 99 },
+        role: 'source',
+      },
+      {
         anchor: { kind: 'hand-card', playerIndex: 1, handIndex: 0, serial: 92 },
+        identity: { kind: 'tool', serial: 92, cardId: 99 },
         role: 'destination',
       },
     ]);

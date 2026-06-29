@@ -12,6 +12,7 @@ import {
   type RevealSessionStep,
   type AnimationVisibilityClaim,
 } from '../animations/replayAnimationPlan';
+import { serializeAnimationAnchor } from '../animations/animationAnchors';
 import { resolveCardImageUrl } from '../game/cardImages';
 import { SlotType, targetFor, type ActionTimelineEvent, type CardView, type GameView, type LogView, type PlayerView, type PokemonSlotView } from '../game/types';
 import type { ReplayAnimationPhase, ReplaySnapshot, ReplayStep } from '../game/replay';
@@ -2198,13 +2199,15 @@ function cardMoveMotion(input: {
   coordinateSpace?: AnimationMotion['coordinateSpace'];
   spriteVisual?: AnimationSpriteVisual;
 }): AnimationMotion {
+  const coordinateSpace = input.coordinateSpace ?? 'board';
+  const removeSprite = coordinateSpace === 'cross-plane' ? 'arrival' : input.removeSprite;
   return {
     id: input.id,
     kind: 'card-move',
     identity: input.identity,
     sourceAnchor: input.sourceAnchor,
     targetAnchor: input.targetAnchor,
-    coordinateSpace: input.coordinateSpace ?? 'board',
+    coordinateSpace,
     startMs: actionAnimationStartMs(input.phase.events, input.event),
     durationMs: input.durationMs ?? actionAnimationTiming.boardMoveMs,
     spriteVisual: input.spriteVisual ?? {
@@ -2213,8 +2216,8 @@ function cardMoveMotion(input: {
     },
     handoffPolicy: {
       hideSourceUntil: input.sourceAnchor.kind === 'deck-top' ? 'snapshot' : 'scope-exit',
-      hideDestinationUntil: 'prepaint',
-      removeSprite: input.removeSprite,
+      hideDestinationUntil: coordinateSpace === 'cross-plane' ? 'arrival' : 'prepaint',
+      removeSprite,
       prepaintFrames: 2,
     },
   };
@@ -2516,7 +2519,7 @@ function revealSessionVisibilityClaims(
 function boardCardMoveVisibilityClaims(phase: AnimationEventPhase, view: GameView): AnimationVisibilityClaim[] {
   const claims: AnimationVisibilityClaim[] = [];
   for (const motion of boardCardMoveMotions(phase, view)) {
-    if (motion.kind !== 'card-move' || motion.coordinateSpace !== 'board') {
+    if (motion.kind !== 'card-move') {
       continue;
     }
     if (motion.handoffPolicy.hideSourceUntil !== 'none' && motion.sourceAnchor.kind !== 'deck-top') {
@@ -2605,6 +2608,11 @@ function drawDestinationVisibilityClaims(phase: AnimationEventPhase, view: GameV
 }
 
 function attachedHandDestinationVisibilityClaims(phase: AnimationEventPhase, view: GameView): AnimationVisibilityClaim[] {
+  const claimedDestinations = new Set(
+    boardCardMoveVisibilityClaims(phase, view)
+      .filter((claim) => claim.role === 'destination')
+      .map((claim) => serializeAnimationAnchor(claim.anchor)),
+  );
   const claims: AnimationVisibilityClaim[] = [];
   for (const event of phase.events) {
     if (!isAttachedToHandMoveEvent(event) || event.playerIndex === undefined) {
@@ -2618,14 +2626,18 @@ function attachedHandDestinationVisibilityClaims(phase: AnimationEventPhase, vie
     if (handIndex < 0 || !card) {
       continue;
     }
+    const anchor: AnimationAnchorRef = {
+      kind: 'hand-card',
+      playerIndex,
+      handIndex,
+      serial: card.serial,
+    };
+    if (claimedDestinations.has(serializeAnimationAnchor(anchor))) {
+      continue;
+    }
     claims.push({
       scopeKey: phase.key,
-      anchor: {
-        kind: 'hand-card',
-        playerIndex,
-        handIndex,
-        serial: card.serial,
-      },
+      anchor,
       identity: {
         kind: Number(params?.fromArea) === CabtAreaType.TOOL ? 'tool' : 'energy',
         serial: card.serial,

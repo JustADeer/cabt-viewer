@@ -21,8 +21,10 @@
   let lastPlan: ReplayAnimationPhasePlan | undefined;
   let lastReduceMotion = false;
   let planTokens: AnimationVisibilityToken[] = [];
+  const planTokenStartTimers: ReturnType<typeof setTimeout>[] = [];
   const planTokenReleaseTimers: ReturnType<typeof setTimeout>[] = [];
   const staleScopeReleaseTimers: ReturnType<typeof setTimeout>[] = [];
+  const sourceClaimLeadMs = 20;
   let refreshGeneration = 0;
   let reduceMotion = $state(false);
 
@@ -92,25 +94,40 @@
         ? currentPlan.visibilityClaims.filter((claim) => claim.role !== 'source')
         : currentPlan.visibilityClaims;
       for (const claim of claims) {
-        const token = replayAnimationVisibility.hide({
-          ...claim,
-          scopeKey: currentScopeKey,
-        });
-        const releaseMs = visibilityClaimReleaseMs(currentPlan, claim);
-        planTokens = [...planTokens, token];
-        if (releaseMs === undefined) {
+        const startMs = visibilityClaimStartMs(currentPlan, claim);
+        const startClaim = () => {
+          const token = replayAnimationVisibility.hide({
+            ...claim,
+            scopeKey: currentScopeKey,
+          });
+          const releaseMs = visibilityClaimReleaseMs(currentPlan, claim);
+          planTokens = [...planTokens, token];
+          if (releaseMs === undefined) {
+            return;
+          }
+          const releaseTimer = setTimeout(() => {
+            replayAnimationVisibility.release(token);
+            planTokens = planTokens.filter((candidate) => candidate !== token);
+            const timerIndex = planTokenReleaseTimers.indexOf(releaseTimer);
+            if (timerIndex >= 0) {
+              planTokenReleaseTimers.splice(timerIndex, 1);
+            }
+            scheduleVisibilityRefresh();
+          }, Math.max(0, releaseMs - startMs));
+          planTokenReleaseTimers.push(releaseTimer);
+        };
+        if (startMs <= 0) {
+          startClaim();
           continue;
         }
-        const releaseTimer = setTimeout(() => {
-          replayAnimationVisibility.release(token);
-          planTokens = planTokens.filter((candidate) => candidate !== token);
-          const timerIndex = planTokenReleaseTimers.indexOf(releaseTimer);
+        const startTimer = setTimeout(() => {
+          const timerIndex = planTokenStartTimers.indexOf(startTimer);
           if (timerIndex >= 0) {
-            planTokenReleaseTimers.splice(timerIndex, 1);
+            planTokenStartTimers.splice(timerIndex, 1);
           }
-          scheduleVisibilityRefresh();
-        }, releaseMs);
-        planTokenReleaseTimers.push(releaseTimer);
+          startClaim();
+        }, startMs);
+        planTokenStartTimers.push(startTimer);
       }
     }
 
@@ -118,6 +135,10 @@
   });
 
   function releasePlanTokens() {
+    for (const timer of planTokenStartTimers) {
+      clearTimeout(timer);
+    }
+    planTokenStartTimers.length = 0;
     for (const timer of planTokenReleaseTimers) {
       clearTimeout(timer);
     }
@@ -126,6 +147,17 @@
       replayAnimationVisibility.release(token);
     }
     planTokens = [];
+  }
+
+  function visibilityClaimStartMs(plan: ReplayAnimationPhasePlan, claim: AnimationVisibilityClaim): number {
+    if (claim.role !== 'source') {
+      return 0;
+    }
+    const motion = matchingMotionForClaim(plan, claim);
+    if (!motion) {
+      return 0;
+    }
+    return Math.max(0, motion.startMs - sourceClaimLeadMs);
   }
 
   function visibilityClaimReleaseMs(plan: ReplayAnimationPhasePlan, claim: AnimationVisibilityClaim): number | undefined {

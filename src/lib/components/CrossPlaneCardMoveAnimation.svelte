@@ -1,6 +1,11 @@
 <script lang="ts">
   import { onDestroy, tick } from 'svelte';
-  import { resolveAnimationAnchorElements } from '../animations/animationAnchors';
+  import {
+    animationAnchorForElement,
+    resolveAnimationAnchorElements,
+    serializeAnimationAnchor,
+    type AnimationIdentity,
+  } from '../animations/animationAnchors';
   import {
     hideElementForAnimation,
     releaseElementVisibilityClaims,
@@ -103,7 +108,7 @@
       }
       const sourceElement = sourceElementForMotion(motion);
       const targetElement = targetElementForMotion(motion);
-      if (targetElement) {
+      if (targetElement && !centralClaimOwns(targetElement, 'destination')) {
         sprite.visibilityClaims.push(hideElementForAnimation({
           element: targetElement,
           scopeKey,
@@ -114,7 +119,7 @@
         if (nextGeneration !== generation) {
           return;
         }
-        if (sourceElement) {
+        if (sourceElement && !centralClaimOwns(sourceElement, 'source')) {
           sprite.visibilityClaims.push(hideElementForAnimation({
             element: sourceElement,
             scopeKey,
@@ -129,7 +134,7 @@
         releaseElementVisibilityClaims(sprite.visibilityClaims);
         sprite.visibilityClaims = [];
         removeSpriteAfterPrepaint(sprite.id, nextGeneration);
-      }, motion.startMs + motion.durationMs + handoffSettleMs());
+      }, motion.startMs + motion.durationMs + handoffSettleMs(motion));
       timers.push(startTimer, finishTimer);
     }
   }
@@ -199,8 +204,43 @@
     };
   }
 
-  function handoffSettleMs(): number {
+  function handoffSettleMs(motion: CardMoveAnimationMotion): number {
+    if (motion.handoffPolicy.removeSprite === 'arrival') {
+      return 24;
+    }
     return replayMode ? replayAnimationPhaseGapMs + 40 : 40;
+  }
+
+  function centralClaimOwns(element: HTMLElement, role: 'source' | 'destination'): boolean {
+    const anchoredElement = animationAnchorForElement(element);
+    const anchorKey = anchoredElement ? serializeAnimationAnchor(anchoredElement.anchor) : undefined;
+    if (!anchorKey) {
+      return false;
+    }
+    return !!animationPlan?.visibilityClaims.some((claim) =>
+      claim.role === role
+      && serializeAnimationAnchor(claim.anchor) === anchorKey
+      && animationIdentityMatchesClaim(anchoredElement.identity, claim.identity),
+    );
+  }
+
+  function animationIdentityMatchesClaim(
+    elementIdentity: AnimationIdentity | undefined,
+    claimIdentity: AnimationIdentity | undefined,
+  ): boolean {
+    if (!elementIdentity || !claimIdentity) {
+      return true;
+    }
+    if (elementIdentity.serial !== undefined && claimIdentity.serial !== undefined) {
+      return elementIdentity.serial === claimIdentity.serial;
+    }
+    if (elementIdentity.cardId !== undefined && claimIdentity.cardId !== undefined) {
+      return elementIdentity.cardId === claimIdentity.cardId;
+    }
+    if (elementIdentity.name && claimIdentity.name) {
+      return elementIdentity.name === claimIdentity.name;
+    }
+    return true;
   }
 
   function removeSpriteAfterPrepaint(spriteIdToRemove: string, currentGeneration: number) {
