@@ -922,16 +922,27 @@ function normalizeCardName(name: string): string {
   return energySymbols[energy[1]] ? `basic {${energySymbols[energy[1]]}} energy` : normalized;
 }
 
+function loadAgentManifest(...paths: string[]): AgentManifest['agents'] {
+  for (const p of paths) {
+    if (!fs.existsSync(p)) continue;
+    try {
+      const manifest = JSON.parse(fs.readFileSync(p, 'utf8')) as AgentManifest;
+      if (Array.isArray(manifest.agents)) return manifest.agents;
+    } catch { /* skip malformed */ }
+  }
+  return undefined;
+}
+
 function agentPathForId(agentId: string | undefined): string | undefined {
   if (!agentId) {
     return undefined;
   }
-  const manifestPath = path.join(FRONTEND_ROOT, 'public', 'agents', 'agents.json');
-  if (!fs.existsSync(manifestPath)) {
-    return undefined;
-  }
-  const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8')) as AgentManifest;
-  return manifest.agents?.find((agent) => agent.id === agentId)?.path;
+  const agentsDir = path.join(FRONTEND_ROOT, 'public', 'agents');
+  const agents = loadAgentManifest(
+    path.join(agentsDir, 'agents.json'),
+    path.join(agentsDir, 'local-agents.json'),
+  );
+  return agents?.find((agent) => agent.id === agentId)?.path;
 }
 
 function attachedCardForOption(pokemonCard: { energyCards?: CabtCard[]; tools?: CabtCard[] } | null | undefined, option: CabtOption) {

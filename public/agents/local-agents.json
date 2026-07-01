@@ -1,0 +1,11 @@
+{
+  "agents": [
+    {
+      "id": "pokemai-random",
+      "name": "Pokemai Random",
+      "description": "Picks a random legal option. No strategy. Uses main.py from project root.",
+      "path": "main.py",
+      "deckUrl": "/agents/pokemai-random/deck.csv"
+    }
+  ]
+}

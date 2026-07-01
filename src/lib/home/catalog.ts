@@ -22,8 +22,13 @@ const FALLBACK_AGENT: AgentOption = {
 };
 
 export async function loadAgentOptions(): Promise<AgentOption[]> {
-  const agents = await loadJsonList<AgentOption>('/agents/agents.json', 'agents');
-  return agents.length ? agents : [FALLBACK_AGENT];
+  const [upstream, local] = await Promise.all([
+    loadJsonList<AgentOption>('/agents/agents.json', 'agents'),
+    loadJsonList<AgentOption>('/agents/local-agents.json', 'agents'),
+  ]);
+  const ids = new Set(upstream.map((a) => a.id));
+  const merged = upstream.concat(local.filter((a) => !ids.has(a.id)));
+  return merged.length ? merged : [FALLBACK_AGENT];
 }
 
 export async function loadGameLogs(): Promise<GameLogEntry[]> {
